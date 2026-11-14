@@ -8,6 +8,15 @@ using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using System.Reflection;
+
+[assembly: AssemblyTitle("PC Info")]
+[assembly: AssemblyDescription("Relatorio de hardware e software do PC")]
+[assembly: AssemblyCompany("Budart")]
+[assembly: AssemblyProduct("PC Info")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 
 class PCInfo : Form
 {
