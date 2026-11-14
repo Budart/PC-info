@@ -15,8 +15,8 @@ using System.Reflection;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
 
 class PCInfo : Form
 {
@@ -36,6 +36,18 @@ class PCInfo : Form
     static Font ICON = new Font("Segoe MDL2 Assets", 10);
     const string GCOPY = "\uE8C8", GOK = "\uE73E";
 
+    static string FAM = null;
+    static Font F(float sz, bool semi)
+    {
+        if (FAM == null)
+        {
+            var fams = new System.Drawing.Text.InstalledFontCollection().Families.Select(f => f.Name).ToList();
+            FAM = fams.Contains("Segoe UI Variable Text") ? "Segoe UI Variable Text" : "Segoe UI";
+        }
+        if (semi) { var n = FAM == "Segoe UI" ? "Segoe UI Semibold" : FAM.Replace("Text", "Display") + " Semibold"; try { var f = new Font(n, sz); if (f.Name == n) return f; } catch { } return new Font(FAM, sz, FontStyle.Bold); }
+        return new Font(FAM, sz);
+    }
+
     [STAThread]
     static void Main() { Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); Application.Run(new PCInfo()); }
 
@@ -44,11 +56,11 @@ class PCInfo : Form
     PCInfo()
     {
         Text = "PC Info"; Width = 1100; Height = 800; MinimumSize = new Size(800, 500);
-        StartPosition = FormStartPosition.CenterScreen; Font = new Font("Segoe UI", 9.5f); BackColor = BG; ForeColor = TXT;
+        StartPosition = FormStartPosition.CenterScreen; Font = F(10f, false); BackColor = BG; ForeColor = TXT;
 
         // topo
         var top = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = BG, Padding = new Padding(16, 10, 16, 6) };
-        var title = new Label { Text = "PC INFO", Font = new Font("Segoe UI Semibold", 16), ForeColor = TXT, AutoSize = true, Dock = DockStyle.Left };
+        var title = new Label { Text = "PC INFO", Font = F(18f, true), ForeColor = TXT, AutoSize = true, Dock = DockStyle.Left };
         var bar = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = BG };
         modeBtn = Btn("☰  Modo completo", (s, e) => { full = !full; modeBtn.Text = full ? "◧  Modo essencial" : "☰  Modo completo"; Fill(); }, false);
         bar.Controls.Add(modeBtn);
@@ -107,9 +119,9 @@ class PCInfo : Form
     {
         var p = new Panel { Dock = DockStyle.Fill, BackColor = CARD, Margin = new Padding(4), Padding = new Padding(14, 10, 10, 8) };
         p.Paint += (s, e) => { using (var b = new SolidBrush(c)) e.Graphics.FillRectangle(b, 0, 0, 4, p.Height); };
-        var l1 = new Label { Text = cap, ForeColor = c, Font = new Font("Segoe UI Semibold", 8.5f), Dock = DockStyle.Top, Height = 20 };
-        var l2 = new Label { Text = "…", ForeColor = TXT, Font = new Font("Segoe UI Semibold", 12.5f), Dock = DockStyle.Top, Height = 48, AutoEllipsis = true, Padding = new Padding(0, 0, 24, 0) };
-        var l3 = new Label { Text = "", ForeColor = DIM, Font = new Font("Segoe UI", 9), Dock = DockStyle.Fill, AutoEllipsis = true };
+        var l1 = new Label { Text = cap, ForeColor = c, Font = F(8.5f, true), Dock = DockStyle.Top, Height = 20 };
+        var l2 = new Label { Text = "…", ForeColor = TXT, Font = F(13.5f, true), Dock = DockStyle.Top, Height = 48, AutoEllipsis = true, Padding = new Padding(0, 0, 24, 0) };
+        var l3 = new Label { Text = "", ForeColor = DIM, Font = F(9f, false), Dock = DockStyle.Fill, AutoEllipsis = true };
         var cb = new Label { Text = GCOPY, Font = ICON, ForeColor = Color.FromArgb(110, 110, 120), Size = new Size(26, 22), TextAlign = ContentAlignment.MiddleCenter, Anchor = AnchorStyles.Top | AnchorStyles.Right, Cursor = Cursors.Hand };
         cb.Location = new Point(p.Width - 34, 6);
         p.Resize += (s, e) => cb.Location = new Point(p.Width - 34, 6);
@@ -130,7 +142,7 @@ class PCInfo : Form
     Button Btn(string t, EventHandler h, bool primary)
     {
         var b = new Button { Text = t, AutoSize = true, Height = 32, FlatStyle = FlatStyle.Flat, Margin = new Padding(6, 0, 0, 0), Padding = new Padding(8, 0, 8, 0),
-            BackColor = primary ? ACC : CARD, ForeColor = primary ? Color.Black : TXT, Cursor = Cursors.Hand, Font = new Font("Segoe UI Semibold", 9) };
+            BackColor = primary ? ACC : CARD, ForeColor = primary ? Color.Black : TXT, Cursor = Cursors.Hand, Font = F(9f, true) };
         b.FlatAppearance.BorderColor = primary ? ACC : Color.FromArgb(50, 50, 58);
         b.FlatAppearance.MouseOverBackColor = primary ? Color.FromArgb(60, 195, 255) : Color.FromArgb(40, 40, 48);
         b.Click += h; return b;
@@ -146,7 +158,7 @@ class PCInfo : Form
         {
             if (e.ColumnIndex == 0)
             {
-                using (var f = new Font("Segoe UI Semibold", 10.5f)) TextRenderer.DrawText(g, e.Item.Text.ToUpper(), f, new Rectangle(r.X + 34, r.Y + 6, 600, r.Height - 6), ACC, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+                using (var f = F(10.5f, true)) TextRenderer.DrawText(g, e.Item.Text.ToUpper(), f, new Rectangle(r.X + 34, r.Y + 6, 600, r.Height - 6), ACC, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
             }
             using (var pn = new Pen(Color.FromArgb(45, 45, 55))) g.DrawLine(pn, r.X, r.Bottom - 1, r.Right, r.Bottom - 1);
             if (e.ColumnIndex == 0 && e.Item.Text != "") DrawIcon(g, r, e.ItemIndex == copiedIdx, e.ItemIndex == hoverIdx);
@@ -294,17 +306,22 @@ class PCInfo : Form
             using (var k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"))
                 foreach (var sk in k.GetSubKeyNames()) using (var s2 = k.OpenSubKey(sk)) { try { var d = s2.GetValue("DriverDesc") as string; var m = s2.GetValue("HardwareInformation.qwMemorySize"); if (d != null && m != null) vram[d] = Math.Round(Convert.ToDouble(m) / 1073741824.0) + " GB"; } catch { } }
         } catch { }
+        int bestScore = 0;
         foreach (var o in Q("SELECT Name, PNPDeviceID, DriverVersion FROM Win32_VideoController"))
         {
             var name = ((P(o, "Name") ?? "") as string).Trim();
-            if (name.IndexOf("Basic", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Remote", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Virtual", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+            var pnp = (P(o, "PNPDeviceID") as string ?? "").ToUpper();
+            if (!pnp.StartsWith("PCI\\") || System.Text.RegularExpressions.Regex.IsMatch(name, "Basic|Remote|Virtual|Mirror|Parsec|IddCx|Indirect|SudoMaker|Meta|Hyper-V|VMware|VirtualBox|Citrix|DisplayLink|Spacedesk", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) continue;
+            int score = pnp.Contains("VEN_10DE") || pnp.Contains("VEN_1002") ? 2 : 1;
             name = Rx(name, @"\((R|TM)\)", "");
             var pt = Partner(P(o, "PNPDeviceID") as string);
             var full2 = (pt != null && !pt.StartsWith("NVIDIA") && !pt.StartsWith("AMD") && !name.StartsWith(pt, StringComparison.OrdinalIgnoreCase) ? pt + " " : "") + name + (vram.ContainsKey(P(o, "Name") as string ?? "") ? " " + vram[(string)P(o, "Name")] : "");
             E("Placa de vídeo", "GPU", full2);
+            if (score > bestScore) { bestScore = score; hl["GPU"] = new[] { full2, "Driver " + P(o, "DriverVersion") }; }
             if (pt != null) E("Placa de vídeo", "  Fabricante da placa", pt);
             E("Placa de vídeo", "  Driver", P(o, "DriverVersion") as string);
         }
+        if (bestScore == 0) hl["GPU"] = new[] { "Nenhuma GPU física detectada", "" };
         // Placa-mãe
         foreach (var o in Q("SELECT Manufacturer, Product FROM Win32_BaseBoard"))
         {
@@ -409,8 +426,6 @@ class PCInfo : Form
         {
             var name = (string)P(o, "Name"); A("GPU", name);
             var vr = vram.ContainsKey(name ?? "") ? vram[name] : Gb(P(o, "AdapterRAM"));
-            if (!hl.ContainsKey("GPU") || (name ?? "").IndexOf("Basic", StringComparison.OrdinalIgnoreCase) < 0 && hl["GPU"][0].Contains("Intel") && !name.Contains("Intel"))
-                hl["GPU"] = new[] { name, vr + " VRAM • Driver " + P(o, "DriverVersion") };
             A("  VRAM", vram.ContainsKey(name ?? "") ? vram[name] : Gb(P(o, "AdapterRAM")));
             A("  Versão do driver", P(o, "DriverVersion")); A("  Data do driver", Dt(P(o, "DriverDate")));
             A("  Processador de vídeo", P(o, "VideoProcessor"));
@@ -508,7 +523,7 @@ class Loader : Control
         int d = 64; var r = new Rectangle(Width / 2 - d / 2, Height / 2 - d / 2 - 20, d, d);
         using (var p = new Pen(Color.FromArgb(40, 40, 48), 6)) g.DrawEllipse(p, r);
         using (var p = new Pen(Color.FromArgb(0, 170, 255), 6) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round }) g.DrawArc(p, r, ang, 100);
-        using (var f = new Font("Segoe UI", 11))
+        using (var f = F(11f, false))
             TextRenderer.DrawText(g, "Identificando o hardware do PC...", f, new Rectangle(0, r.Bottom + 18, Width, 30), Color.FromArgb(160, 160, 170), TextFormatFlags.HorizontalCenter);
     }
 }
