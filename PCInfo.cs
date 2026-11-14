@@ -15,8 +15,8 @@ using System.Reflection;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("1.3.0.0")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyFileVersion("1.4.0.0")]
 
 class PCInfo : Form
 {
@@ -56,6 +56,7 @@ class PCInfo : Form
     PCInfo()
     {
         Text = "PC Info"; Width = 1100; Height = 800; MinimumSize = new Size(800, 500);
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         StartPosition = FormStartPosition.CenterScreen; Font = F(10f, false); BackColor = BG; ForeColor = TXT;
 
         // topo
