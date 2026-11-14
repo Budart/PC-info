@@ -37,7 +37,7 @@ class PCInfo : Form
     const string GCOPY = "\uE8C8", GOK = "\uE73E";
 
     static string FAM = null;
-    static Font F(float sz, bool semi)
+    internal static Font F(float sz, bool semi)
     {
         if (FAM == null)
         {
@@ -523,7 +523,7 @@ class Loader : Control
         int d = 64; var r = new Rectangle(Width / 2 - d / 2, Height / 2 - d / 2 - 20, d, d);
         using (var p = new Pen(Color.FromArgb(40, 40, 48), 6)) g.DrawEllipse(p, r);
         using (var p = new Pen(Color.FromArgb(0, 170, 255), 6) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round }) g.DrawArc(p, r, ang, 100);
-        using (var f = F(11f, false))
+        using (var f = PCInfo.F(11f, false))
             TextRenderer.DrawText(g, "Identificando o hardware do PC...", f, new Rectangle(0, r.Bottom + 18, Width, 30), Color.FromArgb(160, 160, 170), TextFormatFlags.HorizontalCenter);
     }
 }
