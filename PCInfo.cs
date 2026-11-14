@@ -15,8 +15,8 @@ using System.Reflection;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 
 class PCInfo : Form
 {
@@ -26,6 +26,8 @@ class PCInfo : Form
     ListView lv = new ListView();
     Label status = new Label();
     List<string[]> rows = new List<string[]>(); // sec, key, val
+    List<string[]> ess = new List<string[]>();
+    TableLayoutPanel grid; bool full = false; Button modeBtn; Loader loader = new Loader();
     Dictionary<string, string[]> hl = new Dictionary<string, string[]>(); // card -> main, sub
     Dictionary<string, Label[]> cards = new Dictionary<string, Label[]>();
     string sec = "";
@@ -48,6 +50,8 @@ class PCInfo : Form
         var top = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = BG, Padding = new Padding(16, 10, 16, 6) };
         var title = new Label { Text = "PC INFO", Font = new Font("Segoe UI Semibold", 16), ForeColor = TXT, AutoSize = true, Dock = DockStyle.Left };
         var bar = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = BG };
+        modeBtn = Btn("☰  Modo completo", (s, e) => { full = !full; modeBtn.Text = full ? "◧  Modo essencial" : "☰  Modo completo"; Fill(); }, false);
+        bar.Controls.Add(modeBtn);
         bar.Controls.Add(Btn("⟳  Atualizar", (s, e) => Load2(), false));
         bar.Controls.Add(Btn("Copiar seleção", (s, e) => CopySel(), false));
         bar.Controls.Add(Btn("Copiar tudo", (s, e) => Clipboard.SetText(Report()), false));
@@ -55,7 +59,7 @@ class PCInfo : Form
         top.Controls.Add(bar); top.Controls.Add(title);
 
         // cards de destaque
-        var grid = new TableLayoutPanel { Dock = DockStyle.Top, Height = 128, ColumnCount = 4, RowCount = 1, BackColor = BG, Padding = new Padding(12, 0, 12, 8) };
+        grid = new TableLayoutPanel { Dock = DockStyle.Top, Height = 128, ColumnCount = 4, RowCount = 1, BackColor = BG, Padding = new Padding(12, 0, 12, 8) };
         for (int i = 0; i < 4; i++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
         string[][] defs = { new[] { "CPU", "PROCESSADOR" }, new[] { "GPU", "PLACA DE VÍDEO" }, new[] { "RAM", "MEMÓRIA" }, new[] { "MB", "PLACA-MÃE" } };
         Color[] cols = { Color.FromArgb(0, 170, 255), Color.FromArgb(118, 220, 80), Color.FromArgb(255, 170, 40), Color.FromArgb(200, 110, 255) };
@@ -94,6 +98,7 @@ class PCInfo : Form
         lvWrap.Controls.Add(lv);
 
         status.Dock = DockStyle.Bottom; status.Height = 26; status.ForeColor = DIM; status.Padding = new Padding(16, 0, 0, 0); status.TextAlign = ContentAlignment.MiddleLeft;
+        loader.Dock = DockStyle.Fill; Controls.Add(loader);
         Controls.Add(lvWrap); Controls.Add(grid); Controls.Add(top); Controls.Add(status);
         Shown += (s, e) => Load2();
     }
@@ -141,20 +146,20 @@ class PCInfo : Form
         {
             if (e.ColumnIndex == 0)
             {
-                using (var f = new Font("Segoe UI Semibold", 10.5f)) TextRenderer.DrawText(g, e.Item.Text.ToUpper(), f, new Rectangle(r.X + 2, r.Y + 6, 600, r.Height - 6), ACC, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+                using (var f = new Font("Segoe UI Semibold", 10.5f)) TextRenderer.DrawText(g, e.Item.Text.ToUpper(), f, new Rectangle(r.X + 34, r.Y + 6, 600, r.Height - 6), ACC, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
             }
             using (var pn = new Pen(Color.FromArgb(45, 45, 55))) g.DrawLine(pn, r.X, r.Bottom - 1, r.Right, r.Bottom - 1);
-            if (e.ColumnIndex == 1 && e.Item.Text != "") DrawIcon(g, r, e.ItemIndex == copiedIdx, e.ItemIndex == hoverIdx);
+            if (e.ColumnIndex == 0 && e.Item.Text != "") DrawIcon(g, r, e.ItemIndex == copiedIdx, e.ItemIndex == hoverIdx);
             return;
         }
         var fc = e.ColumnIndex == 0 ? DIM : TXT;
-        int pad = e.ColumnIndex == 1 ? 40 : 12;
-        TextRenderer.DrawText(g, e.SubItem.Text, lv.Font, new Rectangle(r.X + 10, r.Y, r.Width - pad, r.Height), fc,
+        int off = e.ColumnIndex == 0 ? 36 : 10;
+        TextRenderer.DrawText(g, e.SubItem.Text, lv.Font, new Rectangle(r.X + off, r.Y, r.Width - off - 4, r.Height), fc,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        if (e.ColumnIndex == 1) DrawIcon(g, r, e.ItemIndex == copiedIdx, e.ItemIndex == hoverIdx);
+        if (e.ColumnIndex == 0) DrawIcon(g, r, e.ItemIndex == copiedIdx, e.ItemIndex == hoverIdx);
     }
 
-    bool OnIcon(ListViewItem it, int x) { if (it.Tag as string == "H" && it.Text == "") return false; return x >= it.Bounds.Right - 34; }
+    bool OnIcon(ListViewItem it, int x) { if (it.Tag as string == "H" && it.Text == "") return false; return x >= it.Bounds.Left && x <= it.Bounds.Left + 34; }
 
     string SectionText(int idx)
     {
@@ -165,30 +170,33 @@ class PCInfo : Form
 
     void DrawIcon(Graphics g, Rectangle r, bool ok, bool hot)
     {
-        var ir = new Rectangle(r.Right - 30, r.Y + (r.Height - 22) / 2, 24, 22);
+        var ir = new Rectangle(r.X + 6, r.Y + (r.Height - 22) / 2, 24, 22);
         if (hot && !ok) using (var b = new SolidBrush(Color.FromArgb(45, 45, 55))) g.FillRectangle(b, ir);
         TextRenderer.DrawText(g, ok ? GOK : GCOPY, ICON, ir, ok ? Color.FromArgb(118, 220, 80) : (hot ? TXT : Color.FromArgb(90, 90, 100)), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
     }
 
     void Load2()
     {
-        status.Text = "Coletando informações..."; lv.Items.Clear(); rows.Clear(); hl.Clear();
-        new Thread(() => { try { Collect(); } catch { } BeginInvoke((Action)Fill); }) { IsBackground = true }.Start();
+        status.Text = "Coletando informações..."; lv.Items.Clear(); rows.Clear(); ess.Clear(); hl.Clear(); grid.Visible = false; loader.Show(); loader.BringToFront();
+        new Thread(() => { try { Collect(); } catch { } try { CollectEss(); } catch { } BeginInvoke((Action)Fill); }) { IsBackground = true }.Start();
     }
 
     void Fill()
     {
-        lv.BeginUpdate();
+        loader.Hide(); grid.Visible = true;
+        lv.BeginUpdate(); lv.Items.Clear();
         string last = null;
-        foreach (var r in rows)
+        foreach (var r in Cur)
         {
             if (r[0] != last) { if (last != null) lv.Items.Add(new ListViewItem(new[] { "", "" }) { Tag = "H" }); lv.Items.Add(new ListViewItem(new[] { r[0], "" }) { Tag = "H" }); last = r[0]; }
             lv.Items.Add(new ListViewItem(new[] { r[1], r[2] }));
         }
         lv.EndUpdate();
         foreach (var k in cards.Keys) if (hl.ContainsKey(k)) { cards[k][0].Text = hl[k][0]; cards[k][1].Text = hl[k][1]; }
-        status.Text = rows.Count + " itens  •  " + Environment.MachineName + "  •  " + DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+        status.Text = (full ? "Modo completo" : "Modo essencial") + "  •  " + Cur.Count + " itens  •  " + Environment.MachineName + "  •  " + DateTime.Now.ToString("dd/MM/yyyy HH:mm");
     }
+
+    List<string[]> Cur { get { return full ? rows : ess; } }
 
     void CopySel()
     {
@@ -204,7 +212,7 @@ class PCInfo : Form
         sb.AppendLine();
         foreach (var k in new[] { "CPU", "GPU", "RAM", "MB" }) if (hl.ContainsKey(k)) sb.AppendLine(k.PadRight(5) + ": " + hl[k][0] + "  (" + hl[k][1] + ")");
         string last = null;
-        foreach (var r in rows)
+        foreach (var r in Cur)
         {
             if (r[0] != last) { sb.AppendLine(); sb.AppendLine("==== " + r[0].ToUpper() + " ===="); last = r[0]; }
             sb.AppendLine(r[1].PadRight(34) + ": " + r[2]);
@@ -241,6 +249,105 @@ class PCInfo : Form
     static string Dt(object d) { try { return ManagementDateTimeConverter.ToDateTime(d.ToString()).ToString("dd/MM/yyyy HH:mm"); } catch { return null; } }
     static object Reg(string path, string name) { try { return Registry.GetValue(path, name, null); } catch { return null; } }
     static string Edid(object arr) { try { return new string(((ushort[])arr).Where(c => c != 0).Select(c => (char)c).ToArray()); } catch { return null; } }
+
+    // ---------- modo essencial ----------
+    void E(string sct, string k, string v) { if (!string.IsNullOrWhiteSpace(v)) ess.Add(new[] { sct, k, System.Text.RegularExpressions.Regex.Replace(v.Trim(), @"\s+", " ") }); }
+    static string Rx(string s, string p, string r) { return System.Text.RegularExpressions.Regex.Replace(s ?? "", p, r, System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim(); }
+    static string Brand(string m)
+    {
+        m = (m ?? "").Trim(); var u = m.ToUpper();
+        if (u.StartsWith("ASUS")) return "ASUS"; if (u.StartsWith("MICRO-STAR") || u == "MSI") return "MSI"; if (u.StartsWith("GIGABYTE")) return "Gigabyte";
+        if (u.StartsWith("ASROCK")) return "ASRock"; if (u.StartsWith("DELL")) return "Dell"; if (u.StartsWith("HEWLETT") || u == "HP") return "HP"; if (u.StartsWith("LENOVO")) return "Lenovo";
+        if (u.StartsWith("ACER")) return "Acer"; if (u.StartsWith("INTEL")) return "Intel"; if (u.StartsWith("BIOSTAR")) return "Biostar";
+        return Rx(m, @"[,.]?\s*(Co\.?,?\s*)?(Ltd\.?|Inc\.?|Corporation|Corp\.?|Technology|International|Computer)\b\.?", "").Trim(' ', ',', '.');
+    }
+    static string Partner(string pnp)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(pnp ?? "", @"SUBSYS_[0-9A-F]{4}([0-9A-F]{4})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success) return null;
+        switch (m.Groups[1].Value.ToUpper())
+        {
+            case "1043": return "ASUS"; case "1462": return "MSI"; case "1458": return "Gigabyte"; case "3842": return "EVGA"; case "19DA": return "Zotac";
+            case "196E": return "PNY"; case "1569": return "Palit"; case "10B0": return "Gainward"; case "1DA2": return "Sapphire"; case "148C": return "PowerColor";
+            case "1682": return "XFX"; case "1849": return "ASRock"; case "7377": return "Colorful"; case "1B4C": return "Galax"; case "10DE": return "NVIDIA (Founders Edition)";
+            case "1002": return "AMD (referência)"; case "174B": return "Sapphire"; case "1B0A": return "Inno3D"; case "1028": return "Dell"; case "103C": return "HP"; case "17AA": return "Lenovo";
+            default: return null;
+        }
+    }
+
+    void CollectEss()
+    {
+        const string NT = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+        // CPU
+        foreach (var o in Q("SELECT Name, NumberOfCores, NumberOfLogicalProcessors FROM Win32_Processor"))
+        {
+            var n = Rx((P(o, "Name") ?? "").ToString(), @"\((R|TM)\)|\bCPU\b|@.*$|\d+-Core Processor|Processor|with Radeon.*$", "");
+            n = Rx(n, @"\s+", " ");
+            E("Processador", "CPU", n); E("Processador", "Núcleos / threads", P(o, "NumberOfCores") + " / " + P(o, "NumberOfLogicalProcessors"));
+            if (hl.ContainsKey("CPU")) hl["CPU"][0] = n;
+            break;
+        }
+        // GPU
+        var vram = new Dictionary<string, string>();
+        try
+        {
+            using (var k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"))
+                foreach (var sk in k.GetSubKeyNames()) using (var s2 = k.OpenSubKey(sk)) { try { var d = s2.GetValue("DriverDesc") as string; var m = s2.GetValue("HardwareInformation.qwMemorySize"); if (d != null && m != null) vram[d] = Math.Round(Convert.ToDouble(m) / 1073741824.0) + " GB"; } catch { } }
+        } catch { }
+        foreach (var o in Q("SELECT Name, PNPDeviceID, DriverVersion FROM Win32_VideoController"))
+        {
+            var name = ((P(o, "Name") ?? "") as string).Trim();
+            if (name.IndexOf("Basic", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Remote", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Virtual", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+            name = Rx(name, @"\((R|TM)\)", "");
+            var pt = Partner(P(o, "PNPDeviceID") as string);
+            var full2 = (pt != null && !pt.StartsWith("NVIDIA") && !pt.StartsWith("AMD") && !name.StartsWith(pt, StringComparison.OrdinalIgnoreCase) ? pt + " " : "") + name + (vram.ContainsKey(P(o, "Name") as string ?? "") ? " " + vram[(string)P(o, "Name")] : "");
+            E("Placa de vídeo", "GPU", full2);
+            if (pt != null) E("Placa de vídeo", "  Fabricante da placa", pt);
+            E("Placa de vídeo", "  Driver", P(o, "DriverVersion") as string);
+        }
+        // Placa-mãe
+        foreach (var o in Q("SELECT Manufacturer, Product FROM Win32_BaseBoard"))
+        {
+            var mb = Brand(P(o, "Manufacturer") as string) + " " + ((P(o, "Product") ?? "") as string).Trim();
+            E("Placa-mãe", "Placa-mãe", mb); if (hl.ContainsKey("MB")) hl["MB"][0] = mb;
+        }
+        foreach (var o in Q("SELECT SMBIOSBIOSVersion FROM Win32_BIOS")) E("Placa-mãe", "BIOS", P(o, "SMBIOSBIOSVersion") as string);
+        // RAM
+        double tot = 0; var caps = new List<string>(); var parts = new List<string>(); string ddr = "", spd = "";
+        foreach (var o in Q("SELECT * FROM Win32_PhysicalMemory"))
+        {
+            double c = 0; try { c = Convert.ToDouble(P(o, "Capacity")); } catch { } tot += c; caps.Add(Math.Round(c / 1073741824.0) + "");
+            ddr = DdrType(P(o, "SMBIOSMemoryType"), P(o, "MemoryType")); spd = (P(o, "ConfiguredClockSpeed") ?? P(o, "Speed")) + " MT/s";
+            var pn = (Brand(P(o, "Manufacturer") as string) + " " + ((P(o, "PartNumber") ?? "") as string).Trim()).Trim(); if (pn.Length > 0 && !parts.Contains(pn)) parts.Add(pn);
+        }
+        var cfg = caps.GroupBy(x => x).Select(gp => gp.Count() + "x" + gp.Key + " GB");
+        E("Memória RAM", "RAM", Math.Round(tot / 1073741824.0) + " GB " + ddr + " " + spd + " (" + string.Join(" + ", cfg) + ")");
+        if (parts.Count > 0) E("Memória RAM", "  Módulo", string.Join(" / ", parts));
+        // Armazenamento
+        var media = new Dictionary<string, string>();
+        foreach (var o in Q("root\\Microsoft\\Windows\\Storage", "SELECT FriendlyName, MediaType, BusType FROM MSFT_PhysicalDisk"))
+        {
+            var mt = Convert.ToInt32(P(o, "MediaType") ?? 0); var bt = Convert.ToInt32(P(o, "BusType") ?? 0);
+            media[(P(o, "FriendlyName") ?? "").ToString()] = bt == 17 ? "SSD NVMe" : mt == 4 ? "SSD SATA" : mt == 3 ? "HDD" : bt == 7 ? "USB" : "";
+        }
+        foreach (var o in Q("SELECT Model, Size FROM Win32_DiskDrive"))
+        {
+            var m = ((P(o, "Model") ?? "") as string).Trim(); double sz = 0; try { sz = Convert.ToDouble(P(o, "Size")) / 1e9; } catch { }
+            var t = media.ContainsKey(m) ? media[m] : "";
+            E("Armazenamento", "Disco", m + " (" + (sz >= 1000 ? (sz / 1000).ToString("0.#") + " TB" : sz.ToString("0") + " GB") + (t != "" ? " " + t : "") + ")");
+        }
+        // Monitores
+        foreach (var o in Q("root\\wmi", "SELECT * FROM WmiMonitorID")) E("Monitores", "Monitor", (Edid(P(o, "ManufacturerName")) + " " + Edid(P(o, "UserFriendlyName"))).Trim());
+        // Rede / Áudio
+        foreach (var o in Q("SELECT Name FROM Win32_NetworkAdapter WHERE PhysicalAdapter=True AND NetEnabled=True")) E("Rede e áudio", "Rede", Rx(P(o, "Name") as string, @"\((R|TM)\)", ""));
+        foreach (var o in Q("SELECT Name FROM Win32_SoundDevice")) E("Rede e áudio", "Áudio", P(o, "Name") as string);
+        // Sistema
+        foreach (var o in Q("SELECT Caption, BuildNumber, OSArchitecture FROM Win32_OperatingSystem"))
+            E("Sistema", "Windows", Rx(P(o, "Caption") as string, "^Microsoft ", "") + " " + Reg(NT, "DisplayVersion") + " (build " + P(o, "BuildNumber") + "." + Reg(NT, "UBR") + ", " + P(o, "OSArchitecture") + ")");
+        foreach (var o in Q("root\\Microsoft\\Windows\\Defender", "SELECT AMProductVersion, AntivirusSignatureVersion FROM MSFT_MpComputerStatus"))
+            E("Sistema", "Windows Defender", P(o, "AMProductVersion") + " (assinaturas " + P(o, "AntivirusSignatureVersion") + ")");
+        E("Sistema", "Computador", Environment.MachineName);
+    }
 
     // ---------- coleta ----------
     void Collect()
@@ -383,5 +490,25 @@ class PCInfo : Form
             if (P(o, "DeviceName") == null) continue;
             A("[" + P(o, "DeviceClass") + "] " + P(o, "DeviceName"), P(o, "DriverVersion") + " | " + Dt(P(o, "DriverDate")) + " | " + P(o, "DriverProviderName"));
         }
+    }
+}
+
+class Loader : Control
+{
+    float ang = 0; System.Windows.Forms.Timer t = new System.Windows.Forms.Timer { Interval = 16 };
+    public Loader()
+    {
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+        BackColor = Color.FromArgb(13, 13, 15); t.Tick += (s, e) => { ang = (ang + 7) % 360; Invalidate(); }; t.Start();
+        VisibleChanged += (s, e) => t.Enabled = Visible;
+    }
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics; g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        int d = 64; var r = new Rectangle(Width / 2 - d / 2, Height / 2 - d / 2 - 20, d, d);
+        using (var p = new Pen(Color.FromArgb(40, 40, 48), 6)) g.DrawEllipse(p, r);
+        using (var p = new Pen(Color.FromArgb(0, 170, 255), 6) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round }) g.DrawArc(p, r, ang, 100);
+        using (var f = new Font("Segoe UI", 11))
+            TextRenderer.DrawText(g, "Identificando o hardware do PC...", f, new Rectangle(0, r.Bottom + 18, Width, 30), Color.FromArgb(160, 160, 170), TextFormatFlags.HorizontalCenter);
     }
 }

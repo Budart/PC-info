@@ -16,7 +16,7 @@ jobs:
       - name: Publicar release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1' }}
-          name: PC Info ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.2' }}
+          name: PC Info ${{ github.ref_type == 'tag' && github.ref_name || 'v1.2' }}
           body: Baixe o **PCInfo.exe** abaixo (compilado no Windows pelo GitHub Actions).
           files: PCInfo.exe
