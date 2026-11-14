@@ -1,0 +1,22 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compilar
+        shell: cmd
+        run: '"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /optimize /out:PCInfo.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll PCInfo.cs'
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1' }}
+          name: PC Info ${{ github.ref_type == 'tag' && github.ref_name || 'v1.1' }}
+          body: Baixe o **PCInfo.exe** abaixo (compilado no Windows pelo GitHub Actions).
+          files: PCInfo.exe
