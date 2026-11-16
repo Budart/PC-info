@@ -12,11 +12,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Compilar
         shell: cmd
-        run: '"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /optimize /win32icon:PCInfo.ico /out:PCInfo.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll /r:System.ServiceProcess.dll PCInfo.cs LimpaPC.cs'
+        run: '"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /optimize /win32icon:PCInfo.ico /win32manifest:app.manifest /out:PCInfo.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll /r:System.ServiceProcess.dll PCInfo.cs LimpaPC.cs'
       - name: Publicar release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.9' }}
-          name: PC Info ${{ github.ref_type == 'tag' && github.ref_name || 'v1.9' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.0' }}
+          name: PC Info ${{ github.ref_type == 'tag' && github.ref_name || 'v2.0' }}
           body: Baixe o **PCInfo.exe** abaixo (compilado no Windows pelo GitHub Actions).
           files: PCInfo.exe

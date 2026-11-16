@@ -16,8 +16,8 @@ using System.Net.NetworkInformation;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("1.9.0.0")]
-[assembly: AssemblyFileVersion("1.9.0.0")]
+[assembly: AssemblyVersion("2.0.0.0")]
+[assembly: AssemblyFileVersion("2.0.0.0")]
 
 class PCInfo : Form
 {
@@ -53,26 +53,26 @@ class PCInfo : Form
     static void Main(string[] args)
     {
         Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-        var f = new PCInfo(); if (args.Length > 0 && args[0] == "/limpa") f.Shown += (s, e) => f.ToggleLimpa();
+        var f = new PCInfo(); if (args.Length > 0 && args[0] == "/limpa") f.Shown += (s, e) => f.ShowPage(true);
         Application.Run(f);
     }
-    // Tela LimpaPC: substitui o conteúdo do PC Info (precisa de admin — reabre elevado se preciso)
-    Panel infoPane; LimpaScreen limpa; Button limpaBtn;
-    void ToggleLimpa()
+    // Navegação: menu lateral troca o conteúdo (PC Info | Clean/Boost) sem abrir janelas
+    Panel infoPane, side; LimpaScreen limpa; SideBtn navInfo, navClean, sideToggle; List<SideBtn> infoActs = new List<SideBtn>(); bool sideOpen = true;
+    void ShowPage(bool clean)
     {
-        if (limpa == null)
-        {
-            bool admin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-            if (!admin)
-            {
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Application.ExecutablePath, "/limpa") { Verb = "runas", UseShellExecute = true }); Close(); } catch { }
-                return;
-            }
-            limpa = new LimpaScreen { Dock = DockStyle.Fill, Visible = false }; Controls.Add(limpa); limpa.BringToFront();
-        }
-        bool show = !limpa.Visible; limpa.Visible = show; infoPane.Visible = !show; if (show) limpa.BringToFront();
-        limpaBtn.Text = show ? "◧  Voltar ao PC Info" : "🧹  Limpa PC";
+        SuspendLayout();
+        limpa.Visible = clean; infoPane.Visible = !clean;
+        if (clean) limpa.BringToFront(); else infoPane.BringToFront();
+        navInfo.Active = !clean; navClean.Active = clean; navInfo.Invalidate(); navClean.Invalidate();
+        foreach (var b in infoActs) b.Enabled = !clean;
+        ResumeLayout(true);
     }
+    void ToggleSide()
+    {
+        sideOpen = !sideOpen; SuspendLayout(); side.Width = sideOpen ? 210 : 60;
+        foreach (Control c in side.Controls) c.Invalidate(); ResumeLayout(true);
+    }
+    protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ExStyle |= 0x02000000; return cp; } } // WS_EX_COMPOSITED: sem piscar
 
     protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); int v = 1; try { DwmSetWindowAttribute(Handle, 20, ref v, 4); } catch { } }
 
@@ -84,19 +84,23 @@ class PCInfo : Form
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         StartPosition = FormStartPosition.CenterScreen; Font = F(10f, false); BackColor = BG; ForeColor = TXT;
 
-        // topo
-        var top = new Panel { Dock = DockStyle.Top, Height = 56, BackColor = BG, Padding = new Padding(16, 10, 16, 6) };
-        var title = new Label { Text = "PC INFO", Font = F(18f, true), ForeColor = TXT, AutoSize = true, Dock = DockStyle.Left };
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = BG };
-        modeBtn = Btn("☰  Modo completo", (s, e) => { full = !full; modeBtn.Text = full ? "◧  Modo essencial" : "☰  Modo completo"; Fill(); }, false);
-        limpaBtn = Btn("🧹  Limpa PC", (s, e) => ToggleLimpa(), false); bar.Controls.Add(limpaBtn);
-        bar.Controls.Add(Btn("🌐  Rede", (s, e) => { if (net.Visible) net.Hide(); else net.Show(); }, false));
-        bar.Controls.Add(modeBtn);
-        bar.Controls.Add(Btn("⟳  Atualizar", (s, e) => Load2(), false));
-        bar.Controls.Add(Btn("Copiar seleção", (s, e) => CopySel(), false));
-        bar.Controls.Add(Btn("Copiar tudo", (s, e) => Clipboard.SetText(Report()), false));
-        bar.Controls.Add(Btn("💾  Salvar TXT", (s, e) => SaveTxt(), true));
-        top.Controls.Add(bar); top.Controls.Add(title);
+        // menu lateral (expandido por padrão; recolhe para só ícones)
+        side = new Panel { Dock = DockStyle.Left, Width = 210, BackColor = Color.FromArgb(18, 18, 21), Padding = new Padding(8, 8, 8, 8) };
+        modeBtn = new Button();
+        sideToggle = new SideBtn("\uE700", "PC INFO", null) { Title = true }; sideToggle.Click += (s, e) => ToggleSide();
+        navInfo = new SideBtn("\uE7F8", "Informações", null) { Active = true }; navInfo.Click += (s, e) => ShowPage(false);
+        navClean = new SideBtn("\uE945", "Clean/Boost", Color.FromArgb(185, 110, 255)); navClean.Click += (s, e) => ShowPage(true);
+        var navNet = new SideBtn("\uE701", "Rede", Color.FromArgb(40, 200, 90)); navNet.Click += (s, e) => { if (net.Visible) net.Hide(); else net.Show(); };
+        net.VisibleChanged += (s, e) => { navNet.Active = net.Visible; navNet.Invalidate(); };
+        var sep = new SideBtn("", "AÇÕES", null) { Caption = true };
+        var bMode = new SideBtn("\uE8FD", "Modo completo", null); bMode.Click += (s, e) => { full = !full; bMode.Text = full ? "Modo essencial" : "Modo completo"; bMode.Glyph = full ? "\uE8A9" : "\uE8FD"; bMode.Invalidate(); Fill(); };
+        var bUpd = new SideBtn("\uE72C", "Atualizar", null); bUpd.Click += (s, e) => Load2();
+        var bSel = new SideBtn("\uE8C8", "Copiar seleção", null); bSel.Click += (s, e) => CopySel();
+        var bAll = new SideBtn("\uE8B3", "Copiar tudo", null); bAll.Click += (s, e) => Clipboard.SetText(Report());
+        var bSave = new SideBtn("\uE74E", "Salvar TXT", ACC); bSave.Click += (s, e) => SaveTxt();
+        infoActs.AddRange(new[] { bMode, bUpd, bSel, bAll, bSave });
+        var order = new List<SideBtn> { sideToggle, navInfo, navClean, navNet, sep, bMode, bUpd, bSel, bAll, bSave };
+        for (int k = order.Count - 1; k >= 0; k--) { order[k].Dock = DockStyle.Top; side.Controls.Add(order[k]); }
 
         // cards de destaque
         grid = new TableLayoutPanel { Dock = DockStyle.Top, Height = 128, ColumnCount = 4, RowCount = 1, BackColor = BG, Padding = new Padding(12, 0, 12, 8) };
@@ -141,7 +145,8 @@ class PCInfo : Form
         loader.Dock = DockStyle.Fill;
         infoPane = new Panel { Dock = DockStyle.Fill, BackColor = BG };
         infoPane.Controls.Add(loader); infoPane.Controls.Add(lvWrap); infoPane.Controls.Add(grid);
-        Controls.Add(infoPane); Controls.Add(top); Controls.Add(status);
+        limpa = new LimpaScreen { Dock = DockStyle.Fill, Visible = false };
+        Controls.Add(limpa); Controls.Add(infoPane); Controls.Add(side); Controls.Add(status);
         Shown += (s, e) => Load2();
     }
 
@@ -742,5 +747,38 @@ class NetMonitor : Form
                     TextRenderer.DrawText(g, info[i][1], fv, new Rectangle(192, y, Width - 210, RH), W, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
                 }
         }
+    }
+}
+
+// Botão do menu lateral: ícone + texto (texto some quando o menu recolhe)
+class SideBtn : Control
+{
+    public string Glyph; public bool Active, Title, Caption; public Color Accent; bool hi;
+    static Font MDL = new Font("Segoe MDL2 Assets", 13f);
+    public SideBtn(string glyph, string text, Color? accent)
+    {
+        Glyph = glyph; Text = text; Accent = accent ?? Color.FromArgb(0, 170, 255); Height = 44; Cursor = Cursors.Hand;
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+    }
+    protected override void OnCreateControl() { base.OnCreateControl(); if (Caption) { Height = 34; Cursor = Cursors.Default; } if (Title) Height = 54; }
+    protected override void OnMouseEnter(EventArgs e) { hi = true; Invalidate(); }
+    protected override void OnMouseLeave(EventArgs e) { hi = false; Invalidate(); }
+    protected override void OnEnabledChanged(EventArgs e) { base.OnEnabledChanged(e); Invalidate(); }
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics; g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.Clear(Parent != null ? Parent.BackColor : Color.Black);
+        bool wide = Width > 100;
+        if (Caption) { if (wide) using (var f = PCInfo.F(8f, true)) TextRenderer.DrawText(g, Text, f, new Point(14, 14), Color.FromArgb(100, 100, 110));
+            else using (var p = new Pen(Color.FromArgb(50, 50, 58))) g.DrawLine(p, 10, Height / 2, Width - 10, Height / 2); return; }
+        var r = new RectangleF(0.5f, 2, Width - 1.5f, Height - 4);
+        if ((Active || hi) && Enabled)
+            using (var gp = C.Round(r, 9)) using (var b = new SolidBrush(Active ? Color.FromArgb(45, Accent) : Color.FromArgb(28, 255, 255, 255))) g.FillPath(b, gp);
+        if (Active) using (var b = new SolidBrush(Accent)) using (var gp = C.Round(new RectangleF(1, 12, 4, Height - 24), 2)) g.FillPath(b, gp);
+        int a = Enabled ? 255 : 80;
+        Color ic = Title ? Color.FromArgb(230, 230, 235) : Active ? Accent : (hi && Enabled ? Accent : Color.FromArgb(a, 185, 185, 195));
+        TextRenderer.DrawText(g, Glyph, MDL, new Rectangle(2, 0, 40, Height), ic, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        if (wide) using (var f = Title ? PCInfo.F(15f, true) : PCInfo.F(10.5f, Active))
+            TextRenderer.DrawText(g, Text, f, new Rectangle(48, 0, Width - 52, Height), Active || Title ? Color.White : Color.FromArgb(a, 210, 210, 218), TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
     }
 }

@@ -258,7 +258,7 @@ class ListView2 : Control {
 
 class LBtn : Control {
     public bool Primary; bool hi; public Color Accent = C.White;
-    public LBtn(string t, bool primary) { Text = t; Primary = primary; DoubleBuffered = true; Cursor = Cursors.Hand; Height = 44; BackColor = C.Bg; }
+    public LBtn(string t, bool primary) { Text = t; Primary = primary; DoubleBuffered = true; Cursor = Cursors.Hand; Height = 44; BackColor = C.Bg; SetStyle(ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true); }
     protected override void OnMouseEnter(EventArgs e) { hi = true; Invalidate(); }
     protected override void OnMouseLeave(EventArgs e) { hi = false; Invalidate(); }
     protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
@@ -338,7 +338,7 @@ class Header : Control {
 // "Selecionar tudo" (checkbox desenhado)
 class SelAll : Control {
     public bool On = true; public Color Accent; public event Action<bool> Changed;
-    public SelAll() { DoubleBuffered = true; Height = 34; Cursor = Cursors.Hand; }
+    public SelAll() { DoubleBuffered = true; Height = 34; Cursor = Cursors.Hand; SetStyle(ControlStyles.ResizeRedraw, true); }
     protected override void OnClick(EventArgs e) { On = !On; Invalidate(); if (Changed != null) Changed(On); }
     protected override void OnPaint(PaintEventArgs e) {
         var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(C.Bg);
@@ -383,7 +383,7 @@ class LimpaPanel : UserControl {
     void S(string n, Kind k) { items.Add(new Item { Name = n, Kind = k }); list.Rows.Add(items.Last()); }
 
     public LimpaPanel() {
-        BackColor = C.Bg; DoubleBuffered = true;
+        BackColor = C.Bg; DoubleBuffered = true; ResizeRedraw = true;
         string L = "%LOCALAPPDATA%", A = "%APPDATA%", W = "%WINDIR%", PD = "%PROGRAMDATA%";
         list.Rows.Add("ARQUIVOS E CACHE");
         F("Temporários do usuário", "%TEMP%");

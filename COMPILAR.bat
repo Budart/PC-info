@@ -1,5 +1,5 @@
 @echo off
 REM Compila o PCInfo.exe no proprio PC usando o compilador que ja vem no Windows (.NET Framework 4)
 cd /d "%~dp0"
-"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /optimize /win32icon:PCInfo.ico /out:PCInfo.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll /r:System.ServiceProcess.dll PCInfo.cs LimpaPC.cs
+"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /optimize /win32icon:PCInfo.ico /win32manifest:app.manifest /out:PCInfo.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll /r:System.ServiceProcess.dll PCInfo.cs LimpaPC.cs
 if exist PCInfo.exe (start "" PCInfo.exe) else (pause)
