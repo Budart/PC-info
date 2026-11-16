@@ -16,8 +16,8 @@ using System.Net.NetworkInformation;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("1.8.0.0")]
-[assembly: AssemblyFileVersion("1.8.0.0")]
+[assembly: AssemblyVersion("1.9.0.0")]
+[assembly: AssemblyFileVersion("1.9.0.0")]
 
 class PCInfo : Form
 {
@@ -53,13 +53,25 @@ class PCInfo : Form
     static void Main(string[] args)
     {
         Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-        if (args.Length > 0 && args[0] == "/limpa") Application.Run(new LimpaForm()); else Application.Run(new PCInfo());
+        var f = new PCInfo(); if (args.Length > 0 && args[0] == "/limpa") f.Shown += (s, e) => f.ToggleLimpa();
+        Application.Run(f);
     }
-    static void OpenLimpa(IWin32Window owner)
+    // Tela LimpaPC: substitui o conteúdo do PC Info (precisa de admin — reabre elevado se preciso)
+    Panel infoPane; LimpaScreen limpa; Button limpaBtn;
+    void ToggleLimpa()
     {
-        bool admin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-        if (admin) { var f = new LimpaForm(); f.Show(owner); return; }
-        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Application.ExecutablePath, "/limpa") { Verb = "runas", UseShellExecute = true }); } catch { }
+        if (limpa == null)
+        {
+            bool admin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            if (!admin)
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Application.ExecutablePath, "/limpa") { Verb = "runas", UseShellExecute = true }); Close(); } catch { }
+                return;
+            }
+            limpa = new LimpaScreen { Dock = DockStyle.Fill, Visible = false }; Controls.Add(limpa); limpa.BringToFront();
+        }
+        bool show = !limpa.Visible; limpa.Visible = show; infoPane.Visible = !show; if (show) limpa.BringToFront();
+        limpaBtn.Text = show ? "◧  Voltar ao PC Info" : "🧹  Limpa PC";
     }
 
     protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); int v = 1; try { DwmSetWindowAttribute(Handle, 20, ref v, 4); } catch { } }
@@ -77,7 +89,7 @@ class PCInfo : Form
         var title = new Label { Text = "PC INFO", Font = F(18f, true), ForeColor = TXT, AutoSize = true, Dock = DockStyle.Left };
         var bar = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = BG };
         modeBtn = Btn("☰  Modo completo", (s, e) => { full = !full; modeBtn.Text = full ? "◧  Modo essencial" : "☰  Modo completo"; Fill(); }, false);
-        bar.Controls.Add(Btn("🧹  Limpeza", (s, e) => OpenLimpa(this), false));
+        limpaBtn = Btn("🧹  Limpa PC", (s, e) => ToggleLimpa(), false); bar.Controls.Add(limpaBtn);
         bar.Controls.Add(Btn("🌐  Rede", (s, e) => { if (net.Visible) net.Hide(); else net.Show(); }, false));
         bar.Controls.Add(modeBtn);
         bar.Controls.Add(Btn("⟳  Atualizar", (s, e) => Load2(), false));
@@ -126,8 +138,10 @@ class PCInfo : Form
         lvWrap.Controls.Add(lv);
 
         status.Dock = DockStyle.Bottom; status.Height = 26; status.ForeColor = DIM; status.Padding = new Padding(16, 0, 0, 0); status.TextAlign = ContentAlignment.MiddleLeft;
-        loader.Dock = DockStyle.Fill; Controls.Add(loader);
-        Controls.Add(lvWrap); Controls.Add(grid); Controls.Add(top); Controls.Add(status);
+        loader.Dock = DockStyle.Fill;
+        infoPane = new Panel { Dock = DockStyle.Fill, BackColor = BG };
+        infoPane.Controls.Add(loader); infoPane.Controls.Add(lvWrap); infoPane.Controls.Add(grid);
+        Controls.Add(infoPane); Controls.Add(top); Controls.Add(status);
         Shown += (s, e) => Load2();
     }
 
