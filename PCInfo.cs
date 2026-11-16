@@ -16,8 +16,8 @@ using System.Net.NetworkInformation;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("2.0.0.0")]
-[assembly: AssemblyFileVersion("2.0.0.0")]
+[assembly: AssemblyVersion("2.1.0.0")]
+[assembly: AssemblyFileVersion("2.1.0.0")]
 
 class PCInfo : Form
 {
@@ -64,7 +64,7 @@ class PCInfo : Form
         limpa.Visible = clean; infoPane.Visible = !clean;
         if (clean) limpa.BringToFront(); else infoPane.BringToFront();
         navInfo.Active = !clean; navClean.Active = clean; navInfo.Invalidate(); navClean.Invalidate();
-        foreach (var b in infoActs) b.Enabled = !clean;
+        foreach (var b in infoActs) b.Visible = !clean;
         ResumeLayout(true);
     }
     void ToggleSide()
@@ -98,7 +98,7 @@ class PCInfo : Form
         var bSel = new SideBtn("\uE8C8", "Copiar seleção", null); bSel.Click += (s, e) => CopySel();
         var bAll = new SideBtn("\uE8B3", "Copiar tudo", null); bAll.Click += (s, e) => Clipboard.SetText(Report());
         var bSave = new SideBtn("\uE74E", "Salvar TXT", ACC); bSave.Click += (s, e) => SaveTxt();
-        infoActs.AddRange(new[] { bMode, bUpd, bSel, bAll, bSave });
+        infoActs.AddRange(new[] { sep, bMode, bUpd, bSel, bAll, bSave });
         var order = new List<SideBtn> { sideToggle, navInfo, navClean, navNet, sep, bMode, bUpd, bSel, bAll, bSave };
         for (int k = order.Count - 1; k >= 0; k--) { order[k].Dock = DockStyle.Top; side.Controls.Add(order[k]); }
 

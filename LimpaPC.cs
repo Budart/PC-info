@@ -26,7 +26,7 @@ static class C {
     }
 }
 
-enum Kind { Files, Bin, Dns, Reg, Proc, Power }
+enum Kind { Files, Bin, Dns, Reg, Proc, Power, Wu }
 
 class Item {
     public string Name; public Kind Kind; public string[] Paths; public string RegKind; public bool On = true;
@@ -247,9 +247,10 @@ class ListView2 : Control {
                         using (var pen = new Pen(C.Bg, 2.2f)) g.DrawLines(pen, new[] { new PointF(box.X + 4, box.Y + 9), new PointF(box.X + 8, box.Y + 13), new PointF(box.X + 14, box.Y + 5) }); }
                     else using (var pen = new Pen(it.Hi ? C.Mute : Color.FromArgb(58, 58, 61), 1.5f)) g.DrawPath(pen, p);
                 }
-                TextRenderer.DrawText(g, it.Name, fr, new Point(50, y + 8), it.On ? C.Text : C.Mute);
                 var sz = TextRenderer.MeasureText(it.Info, fs);
-                TextRenderer.DrawText(g, it.Info, fs, new Point(Width - 20 - sz.Width, y + 10), it.Info == "—" || it.Info == "limpo" ? C.Dim : C.Text);
+                int ix = Width - 20 - sz.Width;
+                TextRenderer.DrawText(g, it.Name, fr, new Rectangle(50, y, Math.Max(0, ix - 62), RH), it.On ? C.Text : C.Mute, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                TextRenderer.DrawText(g, it.Info, fs, new Rectangle(ix, y, sz.Width + 4, RH), it.Info == "—" || it.Info == "limpo" ? C.Dim : C.Text, TextFormatFlags.VerticalCenter);
                 y += RH;
             }
         }
@@ -397,13 +398,25 @@ class LimpaPanel : UserControl {
         F("Relatórios de erro (WER)", PD + @"\Microsoft\Windows\WER\ReportArchive", PD + @"\Microsoft\Windows\WER\ReportQueue");
         F("Logs do Windows", W + @"\Logs\CBS\*.log", W + @"\Logs\DISM\*.log");
         F("Cache de shaders (DirectX)", L + @"\D3DSCache", L + @"\NVIDIA\DXCache", L + @"\AMD\DxCache");
+        F("Cache do Brave / Opera", L + @"\BraveSoftware\Brave-Browser\User Data\*\Cache", L + @"\BraveSoftware\Brave-Browser\User Data\*\Code Cache", L + @"\Opera Software\*\Cache", A + @"\Opera Software\*\Code Cache");
+        F("Cache de internet do Windows", L + @"\Microsoft\Windows\INetCache\IE", L + @"\Microsoft\Windows\INetCache\Low");
+        F("Cache de ícones", L + @"\Microsoft\Windows\Explorer\iconcache_*.db");
+        F("Otimização de Entrega (Windows)", W + @"\ServiceProfiles\NetworkService\AppData\Local\Microsoft\Windows\DeliveryOptimization\Cache");
+        F("Relatórios de erro do usuário", L + @"\Microsoft\Windows\WER\ReportArchive", L + @"\Microsoft\Windows\WER\ReportQueue");
+        F("Cache OpenGL (NVIDIA/AMD)", L + @"\NVIDIA\GLCache", L + @"\AMD\GLCache", A + @"\NVIDIA\ComputeCache");
+        F("Arquivos de instalação NVIDIA/AMD", PD + @"\NVIDIA Corporation\Downloader", "%SYSTEMDRIVE%\AMD\*");
+        F("Cache do Discord", A + @"\discord\Cache", A + @"\discord\Code Cache", A + @"\discord\GPUCache");
+        F("Cache do Spotify", L + @"\Spotify\Storage", L + @"\Spotify\Data");
+        F("Cache do Teams / Slack", A + @"\Microsoft\Teams\Cache", A + @"\Microsoft\Teams\Code Cache", A + @"\Slack\Cache", A + @"\Slack\Code Cache");
+        F("Cache web da Steam / Epic", L + @"\Steam\htmlcache", L + @"\EpicGamesLauncher\Saved\webcache*");
+        F("Prefetch do Windows", W + @"\Prefetch\*.pf");
         F("Lista de arquivos recentes", A + @"\Microsoft\Windows\Recent\*.lnk");
         list.Rows.Add("SISTEMA");
         S("Lixeira", Kind.Bin); S("Cache de DNS", Kind.Dns);
         list.Rows.Add("REGISTRO  ·  BACKUP EM DOCUMENTOS\\LIMPAPC_BACKUPS");
         R("MUICache inválido", "mui"); R("App Paths inválidos", "apppaths");
         R("SharedDLLs inexistentes", "shareddlls"); R("Desinstaladores órfãos", "uninstall");
-        foreach (var it in items) if (new[] { "Lista de arquivos recentes", "Cache do Windows Update", "Desinstaladores órfãos" }.Contains(it.Name)) it.On = false;
+        foreach (var it in items) if (new[] { "Lista de arquivos recentes", "Cache do Windows Update", "Desinstaladores órfãos", "Prefetch do Windows", "Arquivos de instalação NVIDIA/AMD" }.Contains(it.Name)) it.On = false;
 
         var head = new Header { Dock = DockStyle.Top, Title = "Limpa PC", Sub = "Arquivos temporários, caches e registro", Accent = ACC, Icon = Icons.BroomRifle };
         var sel = new SelAll { Dock = DockStyle.Top, Accent = ACC, On = false };
@@ -496,12 +509,19 @@ class BoosterPanel : UserControl {
         P("Nuvem (Dropbox, Google Drive, iCloud)", true, "Dropbox", "GoogleDriveFS", "iCloudDrive", "iCloudServices");
         P("Leitores e escritório (Office, PDF)", false, "WINWORD", "EXCEL", "POWERPNT", "OUTLOOK", "Acrobat", "AcroRd32", "FoxitPDFReader");
         P("Navegadores (Chrome, Edge, Firefox…)", false, "chrome", "msedge", "firefox", "opera", "brave", "vivaldi");
+        P("Torrent (qBittorrent, uTorrent…)", true, "qbittorrent", "uTorrent", "BitTorrent", "Deluge", "transmission-qt");
+        P("Lojas em 2º plano (EA, Ubisoft, Battle.net)", false, "EADesktop", "EABackgroundService", "UbisoftConnect", "upc", "Battle.net", "EpicGamesLauncher", "GalaxyClient");
+        P("RGB e periféricos (iCUE, Armoury, G HUB)", false, "iCUE", "ArmouryCrate", "ArmourySocketServer", "lghub", "lghub_agent", "RazerCentralService", "SignalRgb", "OpenRGB");
+        P("Editores (VS Code, Photoshop…)", false, "Code", "Photoshop", "Illustrator", "AfterFX", "Premiere Pro", "blender");
         list.Rows.Add("SOCIAL E MÚSICA");
         P("Discord", false, "Discord");
+        P("Mensageiros (WhatsApp, Telegram, Zoom)", true, "WhatsApp", "Telegram", "Zoom", "Signal", "Messenger");
         P("Música (Spotify, Deezer, Apple Music…)", false, "Spotify", "Deezer", "iTunes", "AppleMusic", "TIDAL", "Amazon Music", "YouTube Music");
         list.Rows.Add("SISTEMA");
         items.Add(new Item { Name = "Plano de energia: Alto desempenho", Kind = Kind.Power }); list.Rows.Add(items.Last());
         items.Add(new Item { Name = "Liberar RAM ociosa dos processos", Kind = Kind.Bin }); list.Rows.Add(items.Last());
+        items.Add(new Item { Name = "Pausar Windows Update (até reiniciar)", Kind = Kind.Wu, On = false }); list.Rows.Add(items.Last());
+        items.Add(new Item { Name = "Limpar cache de DNS", Kind = Kind.Dns }); list.Rows.Add(items.Last());
 
         var head = new Header { Dock = DockStyle.Top, Title = "Game Booster", Sub = "Fecha apps em segundo plano antes de jogar", Accent = ACC, Icon = Icons.Gamepad };
         var sel = new SelAll { Dock = DockStyle.Left, Width = 170, Accent = ACC, On = false };
@@ -556,6 +576,8 @@ class BoosterPanel : UserControl {
                 case Kind.Bin:
                     foreach (var p in Process.GetProcesses()) try { EmptyWorkingSet(p.Handle); } catch { }
                     break;
+                case Kind.Wu: Cleaner.Svc(true); break;
+                case Kind.Dns: Cleaner.FlushDns(); break;
             }
             it.Info = "feito";
         }
