@@ -16,8 +16,8 @@ using System.Net.NetworkInformation;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("1.7.0.0")]
-[assembly: AssemblyFileVersion("1.7.0.0")]
+[assembly: AssemblyVersion("1.8.0.0")]
+[assembly: AssemblyFileVersion("1.8.0.0")]
 
 class PCInfo : Form
 {
@@ -550,8 +550,8 @@ class NetMonitor : Form
     bool? online = null; long ms = 0; bool busy = false, wifi = true, open = false; float ph = 0; DateTime since = DateTime.Now, lastPub = DateTime.MinValue;
     long linkBps = 0; string pubIp = "", isp = "", loc = "";
     List<string[]> info = new List<string[]>(); List<Rectangle> copyR = new List<Rectangle>(); int copied = -1, hov = -1; DateTime copiedAt;
-    Rectangle eyeR;
-    System.Windows.Forms.Timer t = new System.Windows.Forms.Timer { Interval = 2000 }, anim = new System.Windows.Forms.Timer { Interval = 33 };
+    Rectangle eyeR, xR, gearR; string ssid = ""; DateTime ssidAt = DateTime.MinValue;
+    System.Windows.Forms.Timer t = new System.Windows.Forms.Timer { Interval = 1000 }, anim = new System.Windows.Forms.Timer { Interval = 33 };
     static Color GBG = Color.FromArgb(30, 110, 72), RBG = Color.FromArgb(165, 42, 48), NBG = Color.FromArgb(50, 50, 58);
     static Font MDL = new Font("Segoe MDL2 Assets", 11f);
     const int H0 = 128, RH = 26;
@@ -564,14 +564,15 @@ class NetMonitor : Form
         VisibleChanged += (s, e) => { anim.Enabled = t.Enabled = Visible; if (Visible) Check(); };
         MouseDown += (s, e) => { if (e.Button == MouseButtons.Right) Hide(); };
         MouseClick += (s, e) => Click2(e.Location);
-        MouseMove += (s, e) => { int h = copyR.FindIndex(r => r.Contains(e.Location)); hov = h; Cursor = (h >= 0 || eyeR.Contains(e.Location)) ? Cursors.Hand : Cursors.Default; };
+        MouseMove += (s, e) => { int h = copyR.FindIndex(r => r.Contains(e.Location)); hov = h; Cursor = (h >= 0 || eyeR.Contains(e.Location) || xR.Contains(e.Location) || gearR.Contains(e.Location)) ? Cursors.Hand : Cursors.Default; };
+        MouseLeave += (s, e) => hov = -1;
     }
     void Relayout()
     {
         int h = H0 + (open ? 14 + Math.Max(info.Count, 1) * RH + 12 : 0);
         var wa = Screen.PrimaryScreen.WorkingArea; Bounds = new Rectangle(wa.Right - Width - 16, wa.Bottom - h - 16, Width, h);
         try { using (var gp = Round(new RectangleF(0, 0, Width, Height), 16)) Region = new Region(gp); } catch { }
-        eyeR = new Rectangle(Width - 44, 12, 32, 32); Invalidate();
+        xR = new Rectangle(Width - 42, 12, 30, 30); eyeR = new Rectangle(xR.Left - 82, 12, 76, 30); gearR = new Rectangle(eyeR.Left - 36, 12, 30, 30); Invalidate();
     }
     static System.Drawing.Drawing2D.GraphicsPath Round(RectangleF r, float d)
     {
@@ -582,6 +583,8 @@ class NetMonitor : Form
     protected override bool ShowWithoutActivation { get { return true; } }
     void Click2(Point pt)
     {
+        if (xR.Contains(pt)) { Hide(); return; }
+        if (gearR.Contains(pt)) { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:network-status") { UseShellExecute = true }); } catch { try { System.Diagnostics.Process.Start("ncpa.cpl"); } catch { } } return; }
         if (eyeR.Contains(pt)) { open = !open; Relayout(); return; }
         int i = copyR.FindIndex(r => r.Contains(pt));
         if (i >= 0 && i < info.Count) { try { Clipboard.SetText(info[i][1]); copied = i; copiedAt = DateTime.Now; } catch { } }
@@ -598,7 +601,7 @@ class NetMonitor : Form
     }
     void Check()
     {
-        if (busy) return; busy = true; bool det = open || info.Count == 0;
+        if (busy) return; busy = true; bool det = true;
         ThreadPool.QueueUserWorkItem(_ =>
         {
             bool ok = false; long rt = 0;
@@ -628,7 +631,7 @@ class NetMonitor : Form
                 {
                     var ip = ni.GetIPProperties();
                     var v4 = ip.UnicastAddresses.FirstOrDefault(u => u.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
-                    if (wf) { var ss = Ssid(); if (ss != "") list.Add(new[] { "Rede (SSID)", ss }); }
+                    if (wf) { if ((DateTime.Now - ssidAt).TotalSeconds > 15) { ssid = Ssid(); ssidAt = DateTime.Now; } if (ssid != "") list.Add(new[] { "Rede (SSID)", ssid }); }
                     list.Add(new[] { "Adaptador", ni.Description });
                     list.Add(new[] { "Velocidade do link", Spd(ni.Speed) });
                     list.Add(new[] { "Ping", ok ? rt + " ms" : "-" });
@@ -700,9 +703,13 @@ class NetMonitor : Form
         using (var f2 = PCInfo.F(11f, false)) TextRenderer.DrawText(g, a2, f2, new Point(126, 58), Color.FromArgb(235, 255, 255, 255));
         using (var f3 = PCInfo.F(9.5f, false)) TextRenderer.DrawText(g, a3, f3, new Point(126, 86), Color.FromArgb(200, 255, 255, 255));
 
-        // olho: mostrar/ocultar detalhes de IP/rede
-        using (var b = new SolidBrush(Color.FromArgb(open ? 70 : 35, 255, 255, 255))) using (var gp = Round(eyeR, 10)) g.FillPath(b, gp);
-        TextRenderer.DrawText(g, open ? "" : "", MDL, eyeR, W, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        // engrenagem (config. de rede do Windows) | Info (detalhes) | X (fechar)
+        using (var b = new SolidBrush(Color.FromArgb(35, 255, 255, 255))) { using (var gp = Round(gearR, 10)) g.FillPath(b, gp); using (var gp = Round(xR, 10)) g.FillPath(b, gp); }
+        using (var b = new SolidBrush(Color.FromArgb(open ? 80 : 35, 255, 255, 255))) using (var gp = Round(eyeR, 10)) g.FillPath(b, gp);
+        TextRenderer.DrawText(g, "\uE713", MDL, gearR, W, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        TextRenderer.DrawText(g, "\uE711", MDL, xR, W, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        TextRenderer.DrawText(g, "\uE946", MDL, new Rectangle(eyeR.X + 8, eyeR.Y, 20, eyeR.Height), W, TextFormatFlags.VerticalCenter);
+        using (var fi = PCInfo.F(10f, true)) TextRenderer.DrawText(g, "Info", fi, new Rectangle(eyeR.X + 32, eyeR.Y, 40, eyeR.Height), W, TextFormatFlags.VerticalCenter);
 
         copyR.Clear();
         if (open)
@@ -713,8 +720,9 @@ class NetMonitor : Form
             using (var fk = PCInfo.F(9.5f, false)) using (var fv = PCInfo.F(10f, true))
                 for (int i = 0; i < info.Count; i++)
                 {
-                    int y = y0 + 6 + i * RH; var cr = new Rectangle(20, y + 1, 24, 24); copyR.Add(cr);
-                    if (hov == i) using (var b = new SolidBrush(Color.FromArgb(50, 255, 255, 255))) using (var gp = Round(cr, 6)) g.FillPath(b, gp);
+                    int y = y0 + 6 + i * RH; var row = new Rectangle(16, y, Width - 32, RH); var cr = new Rectangle(20, y + 1, 24, 24); copyR.Add(row);
+                    int al = hov == i ? 60 : (i % 2 == 0 ? 22 : 0);
+                    if (al > 0) using (var b = new SolidBrush(Color.FromArgb(al, 255, 255, 255))) using (var gp = Round(row, 6)) g.FillPath(b, gp);
                     TextRenderer.DrawText(g, copied == i ? "" : "", MDL, cr, W, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                     TextRenderer.DrawText(g, info[i][0], fk, new Rectangle(52, y, 140, RH), Color.FromArgb(200, 255, 255, 255), TextFormatFlags.VerticalCenter);
                     TextRenderer.DrawText(g, info[i][1], fv, new Rectangle(192, y, Width - 210, RH), W, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
