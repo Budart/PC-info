@@ -1,6 +1,6 @@
 # PC Info
 
-App Windows estilo "Everest": lista hardware/software do PC, copiar itens e salvar relatório TXT.
+App Windows estilo "Everest": lista hardware/software do PC, copiar itens e salvar relatório TXT. Inclui o **LimpaPC** (botão Limpeza: limpeza, registro e Game Booster) e um **monitor de internet** flutuante (verde/vermelho) no canto da tela.
 
 ## Como usar (recomendado – sem alerta de antivírus)
 1. Clique em **Code → Download ZIP** e extraia.

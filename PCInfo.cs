@@ -9,14 +9,15 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using System.Reflection;
+using System.Net.NetworkInformation;
 
 [assembly: AssemblyTitle("PC Info")]
 [assembly: AssemblyDescription("Relatorio de hardware e software do PC")]
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("1.4.0.0")]
-[assembly: AssemblyFileVersion("1.4.0.0")]
+[assembly: AssemblyVersion("1.5.0.0")]
+[assembly: AssemblyFileVersion("1.5.0.0")]
 
 class PCInfo : Form
 {
@@ -49,12 +50,24 @@ class PCInfo : Form
     }
 
     [STAThread]
-    static void Main() { Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); Application.Run(new PCInfo()); }
+    static void Main(string[] args)
+    {
+        Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Length > 0 && args[0] == "/limpa") Application.Run(new LimpaForm()); else Application.Run(new PCInfo());
+    }
+    static void OpenLimpa(IWin32Window owner)
+    {
+        bool admin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        if (admin) { var f = new LimpaForm(); f.Show(owner); return; }
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Application.ExecutablePath, "/limpa") { Verb = "runas", UseShellExecute = true }); } catch { }
+    }
 
     protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); int v = 1; try { DwmSetWindowAttribute(Handle, 20, ref v, 4); } catch { } }
 
+    NetMonitor net = new NetMonitor();
     PCInfo()
     {
+        Shown += (s, e) => net.Show(); FormClosed += (s, e) => net.Close();
         Text = "PC Info"; Width = 1100; Height = 800; MinimumSize = new Size(800, 500);
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         StartPosition = FormStartPosition.CenterScreen; Font = F(10f, false); BackColor = BG; ForeColor = TXT;
@@ -64,6 +77,8 @@ class PCInfo : Form
         var title = new Label { Text = "PC INFO", Font = F(18f, true), ForeColor = TXT, AutoSize = true, Dock = DockStyle.Left };
         var bar = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = BG };
         modeBtn = Btn("☰  Modo completo", (s, e) => { full = !full; modeBtn.Text = full ? "◧  Modo essencial" : "☰  Modo completo"; Fill(); }, false);
+        bar.Controls.Add(Btn("🧹  Limpeza", (s, e) => OpenLimpa(this), false));
+        bar.Controls.Add(Btn("🌐  Rede", (s, e) => { if (net.Visible) net.Hide(); else net.Show(); }, false));
         bar.Controls.Add(modeBtn);
         bar.Controls.Add(Btn("⟳  Atualizar", (s, e) => Load2(), false));
         bar.Controls.Add(Btn("Copiar seleção", (s, e) => CopySel(), false));
@@ -526,5 +541,45 @@ class Loader : Control
         using (var p = new Pen(Color.FromArgb(0, 170, 255), 6) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round }) g.DrawArc(p, r, ang, 100);
         using (var f = PCInfo.F(11f, false))
             TextRenderer.DrawText(g, "Identificando o hardware do PC...", f, new Rectangle(0, r.Bottom + 18, Width, 30), Color.FromArgb(160, 160, 170), TextFormatFlags.HorizontalCenter);
+    }
+}
+
+// Janela flutuante: status da internet (ping 8.8.8.8 / 1.1.1.1 a cada 2 s)
+class NetMonitor : Form
+{
+    bool? online = null; long ms = 0; bool busy = false;
+    System.Windows.Forms.Timer t = new System.Windows.Forms.Timer { Interval = 2000 };
+    public NetMonitor()
+    {
+        FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true; StartPosition = FormStartPosition.Manual;
+        Size = new Size(230, 64); BackColor = Color.FromArgb(24, 24, 28); DoubleBuffered = true;
+        var wa = Screen.PrimaryScreen.WorkingArea; Location = new Point(wa.Right - Width - 16, wa.Bottom - Height - 16);
+        t.Tick += (s, e) => Check(); t.Start(); Check();
+        MouseDown += (s, e) => { if (e.Button == MouseButtons.Right) Hide(); };
+    }
+    protected override bool ShowWithoutActivation { get { return true; } }
+    void Check()
+    {
+        if (busy) return; busy = true;
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            bool ok = false; long rt = 0;
+            foreach (var h in new[] { "8.8.8.8", "1.1.1.1" })
+            {
+                try { using (var p = new Ping()) { var r = p.Send(h, 1500); if (r.Status == IPStatus.Success) { ok = true; rt = r.RoundtripTime; break; } } } catch { }
+            }
+            try { BeginInvoke((Action)(() => { online = ok; ms = rt; busy = false; Invalidate(); })); } catch { busy = false; }
+        });
+    }
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics; g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        Color c = online == null ? Color.Gray : online.Value ? Color.FromArgb(40, 200, 90) : Color.FromArgb(230, 60, 60);
+        using (var b = new SolidBrush(c)) { g.FillRectangle(b, 0, 0, 5, Height); g.FillEllipse(b, 20, Height / 2 - 9, 18, 18); }
+        string a = online == null ? "Verificando..." : online.Value ? "Conectado" : "Sem internet";
+        string sub = online == true ? "Ping " + ms + " ms" : online == false ? "Sem resposta de 8.8.8.8" : "";
+        using (var f1 = PCInfo.F(11f, true)) TextRenderer.DrawText(g, a, f1, new Point(50, 10), c);
+        using (var f2 = PCInfo.F(9f, false)) TextRenderer.DrawText(g, sub, f2, new Point(50, 34), Color.FromArgb(150, 150, 160));
+        using (var p = new Pen(Color.FromArgb(50, 50, 58))) g.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
     }
 }
