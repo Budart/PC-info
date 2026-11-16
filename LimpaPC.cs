@@ -404,7 +404,7 @@ class LimpaPanel : UserControl {
         F("Otimização de Entrega (Windows)", W + @"\ServiceProfiles\NetworkService\AppData\Local\Microsoft\Windows\DeliveryOptimization\Cache");
         F("Relatórios de erro do usuário", L + @"\Microsoft\Windows\WER\ReportArchive", L + @"\Microsoft\Windows\WER\ReportQueue");
         F("Cache OpenGL (NVIDIA/AMD)", L + @"\NVIDIA\GLCache", L + @"\AMD\GLCache", A + @"\NVIDIA\ComputeCache");
-        F("Arquivos de instalação NVIDIA/AMD", PD + @"\NVIDIA Corporation\Downloader", "%SYSTEMDRIVE%\AMD\*");
+        F("Arquivos de instalação NVIDIA/AMD", PD + @"\NVIDIA Corporation\Downloader", @"%SYSTEMDRIVE%\AMD\*");
         F("Cache do Discord", A + @"\discord\Cache", A + @"\discord\Code Cache", A + @"\discord\GPUCache");
         F("Cache do Spotify", L + @"\Spotify\Storage", L + @"\Spotify\Data");
         F("Cache do Teams / Slack", A + @"\Microsoft\Teams\Cache", A + @"\Microsoft\Teams\Code Cache", A + @"\Slack\Cache", A + @"\Slack\Code Cache");
