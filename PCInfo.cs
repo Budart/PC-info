@@ -16,8 +16,8 @@ using System.Net.NetworkInformation;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("1.6.0.0")]
-[assembly: AssemblyFileVersion("1.6.0.0")]
+[assembly: AssemblyVersion("1.7.0.0")]
+[assembly: AssemblyFileVersion("1.7.0.0")]
 
 class PCInfo : Form
 {
@@ -67,7 +67,7 @@ class PCInfo : Form
     NetMonitor net = new NetMonitor();
     PCInfo()
     {
-        Shown += (s, e) => net.Show(); FormClosed += (s, e) => net.Close();
+        FormClosed += (s, e) => net.Close();
         Text = "PC Info"; Width = 1100; Height = 800; MinimumSize = new Size(800, 500);
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         StartPosition = FormStartPosition.CenterScreen; Font = F(10f, false); BackColor = BG; ForeColor = TXT;
@@ -544,33 +544,61 @@ class Loader : Control
     }
 }
 
-// Janela flutuante: status da internet (ping 8.8.8.8 / 1.1.1.1 a cada 2 s)
+// Janela flutuante: status da internet (ping 8.8.8.8 / 1.1.1.1 a cada 2 s) — abre pelo botão "Rede"
 class NetMonitor : Form
 {
-    bool? online = null; long ms = 0; bool busy = false; float ph = 0; DateTime since = DateTime.Now;
+    bool? online = null; long ms = 0; bool busy = false, wifi = true, open = false; float ph = 0; DateTime since = DateTime.Now, lastPub = DateTime.MinValue;
+    long linkBps = 0; string pubIp = "", isp = "", loc = "";
+    List<string[]> info = new List<string[]>(); List<Rectangle> copyR = new List<Rectangle>(); int copied = -1, hov = -1; DateTime copiedAt;
+    Rectangle eyeR;
     System.Windows.Forms.Timer t = new System.Windows.Forms.Timer { Interval = 2000 }, anim = new System.Windows.Forms.Timer { Interval = 33 };
     static Color GBG = Color.FromArgb(30, 110, 72), RBG = Color.FromArgb(165, 42, 48), NBG = Color.FromArgb(50, 50, 58);
+    static Font MDL = new Font("Segoe MDL2 Assets", 11f);
+    const int H0 = 128, RH = 26;
     public NetMonitor()
     {
         FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true; StartPosition = FormStartPosition.Manual;
-        Size = new Size(460, 128); BackColor = NBG; DoubleBuffered = true;
-        var wa = Screen.PrimaryScreen.WorkingArea; Location = new Point(wa.Right - Width - 16, wa.Bottom - Height - 16);
-        try { using (var gp = PCInfo_Round(new RectangleF(0, 0, Width, Height), 16)) Region = new Region(gp); } catch { }
-        t.Tick += (s, e) => Check(); t.Start(); Check();
-        anim.Tick += (s, e) => { ph = (ph + 0.033f) % 1f; Invalidate(); }; anim.Start();
-        VisibleChanged += (s, e) => anim.Enabled = Visible;
+        Width = 460; BackColor = NBG; DoubleBuffered = true; Relayout();
+        t.Tick += (s, e) => Check();
+        anim.Tick += (s, e) => { ph = (ph + 0.033f) % 1f; Invalidate(); };
+        VisibleChanged += (s, e) => { anim.Enabled = t.Enabled = Visible; if (Visible) Check(); };
         MouseDown += (s, e) => { if (e.Button == MouseButtons.Right) Hide(); };
+        MouseClick += (s, e) => Click2(e.Location);
+        MouseMove += (s, e) => { int h = copyR.FindIndex(r => r.Contains(e.Location)); hov = h; Cursor = (h >= 0 || eyeR.Contains(e.Location)) ? Cursors.Hand : Cursors.Default; };
     }
-    static System.Drawing.Drawing2D.GraphicsPath PCInfo_Round(RectangleF r, float d)
+    void Relayout()
+    {
+        int h = H0 + (open ? 14 + Math.Max(info.Count, 1) * RH + 12 : 0);
+        var wa = Screen.PrimaryScreen.WorkingArea; Bounds = new Rectangle(wa.Right - Width - 16, wa.Bottom - h - 16, Width, h);
+        try { using (var gp = Round(new RectangleF(0, 0, Width, Height), 16)) Region = new Region(gp); } catch { }
+        eyeR = new Rectangle(Width - 44, 12, 32, 32); Invalidate();
+    }
+    static System.Drawing.Drawing2D.GraphicsPath Round(RectangleF r, float d)
     {
         var p = new System.Drawing.Drawing2D.GraphicsPath();
         p.AddArc(r.X, r.Y, d, d, 180, 90); p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
         p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); p.AddArc(r.X, r.Bottom - d, d, d, 90, 90); p.CloseFigure(); return p;
     }
     protected override bool ShowWithoutActivation { get { return true; } }
+    void Click2(Point pt)
+    {
+        if (eyeR.Contains(pt)) { open = !open; Relayout(); return; }
+        int i = copyR.FindIndex(r => r.Contains(pt));
+        if (i >= 0 && i < info.Count) { try { Clipboard.SetText(info[i][1]); copied = i; copiedAt = DateTime.Now; } catch { } }
+    }
+    static string Spd(long b) { return b <= 0 ? "-" : b >= 1000000000 ? (b / 1e9).ToString("0.#") + " Gbps" : (b / 1e6).ToString("0") + " Mbps"; }
+    static string Ssid()
+    {
+        try {
+            var psi = new System.Diagnostics.ProcessStartInfo("netsh", "wlan show interfaces") { UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true };
+            using (var pr = System.Diagnostics.Process.Start(psi)) { string o = pr.StandardOutput.ReadToEnd(); pr.WaitForExit(3000);
+                foreach (var l in o.Split('\n')) { var x = l.Trim(); if (x.StartsWith("SSID") && !x.StartsWith("BSSID")) return x.Substring(x.IndexOf(':') + 1).Trim(); } }
+        } catch { }
+        return "";
+    }
     void Check()
     {
-        if (busy) return; busy = true;
+        if (busy) return; busy = true; bool det = open || info.Count == 0;
         ThreadPool.QueueUserWorkItem(_ =>
         {
             bool ok = false; long rt = 0;
@@ -578,8 +606,70 @@ class NetMonitor : Form
             {
                 try { using (var p = new Ping()) { var r = p.Send(h, 1500); if (r.Status == IPStatus.Success) { ok = true; rt = r.RoundtripTime; break; } } } catch { }
             }
-            try { BeginInvoke((Action)(() => { if (online != ok) since = DateTime.Now; online = ok; ms = rt; busy = false; BackColor = ok ? GBG : RBG; })); } catch { busy = false; }
+            // adaptador ativo (com gateway)
+            NetworkInterface ni = null;
+            try {
+                ni = NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback
+                    && n.GetIPProperties().GatewayAddresses.Any(g => g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !g.Address.ToString().StartsWith("0.")))
+                    .OrderBy(n => n.Description.ToLower().Contains("virtual") ? 1 : 0).FirstOrDefault();
+            } catch { }
+            bool wf = ni != null ? ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 : wifi;
+            var list = new List<string[]>();
+            if (det)
+            {
+                if (ok && (DateTime.Now - lastPub).TotalMinutes > 5)
+                {
+                    try { using (var wc = new System.Net.WebClient()) { wc.Encoding = Encoding.UTF8;
+                        string j = wc.DownloadString("http://ip-api.com/line/?fields=query,isp,city,regionName");
+                        var a = j.Split('\n'); pubIp = a[3].Trim(); isp = a[2].Trim(); loc = a[0].Trim() + " - " + a[1].Trim(); lastPub = DateTime.Now; } } catch { }
+                }
+                list.Add(new[] { "Conexão", ni == null ? "Nenhuma" : wf ? "Wi-Fi" : "Cabo (Ethernet)" });
+                if (ni != null)
+                {
+                    var ip = ni.GetIPProperties();
+                    var v4 = ip.UnicastAddresses.FirstOrDefault(u => u.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
+                    if (wf) { var ss = Ssid(); if (ss != "") list.Add(new[] { "Rede (SSID)", ss }); }
+                    list.Add(new[] { "Adaptador", ni.Description });
+                    list.Add(new[] { "Velocidade do link", Spd(ni.Speed) });
+                    list.Add(new[] { "Ping", ok ? rt + " ms" : "-" });
+                    if (v4 != null) { list.Add(new[] { "IP interno", v4.Address.ToString() }); list.Add(new[] { "Máscara", v4.IPv4Mask.ToString() }); }
+                    list.Add(new[] { "Gateway", string.Join(", ", ip.GatewayAddresses.Where(g => g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork).Select(g => g.Address.ToString())) });
+                    list.Add(new[] { "DNS", string.Join(", ", ip.DnsAddresses.Where(d => d.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork).Select(d => d.ToString())) });
+                    try { list.Add(new[] { "DHCP", ip.GetIPv4Properties().IsDhcpEnabled ? "Automático (DHCP)" : "IP fixo" }); } catch { }
+                    var mac = ni.GetPhysicalAddress().GetAddressBytes(); if (mac.Length > 0) list.Add(new[] { "MAC", string.Join("-", mac.Select(b => b.ToString("X2"))) });
+                }
+                list.Add(new[] { "IP externo", pubIp == "" ? "-" : pubIp });
+                list.Add(new[] { "Provedor", isp == "" ? "-" : isp });
+                if (loc != "") list.Add(new[] { "Localização", loc });
+            }
+            long sp = ni != null ? ni.Speed : 0;
+            try { BeginInvoke((Action)(() => {
+                if (online != ok) since = DateTime.Now; online = ok; ms = rt; wifi = wf; linkBps = sp; busy = false; BackColor = ok ? GBG : RBG;
+                if (det) { int n0 = info.Count; info = list; if (open && n0 != list.Count) Relayout(); }
+            })); } catch { busy = false; }
         });
+    }
+    static Pen RP(Color c, float w) { return new Pen(c, w) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round }; }
+    void Wifi(Graphics g, float cx, float cy, bool on)
+    {
+        float by = cy + 14;
+        using (var b = new SolidBrush(Color.FromArgb(on ? 255 : 110, Color.White))) g.FillEllipse(b, cx - 4.5f, by - 4.5f, 9, 9);
+        for (int k = 1; k <= 3; k++)
+        {
+            int al = !on ? 110 : ((ph * 4) % 4 >= k ? 255 : 90); float r = k * 11;
+            using (var p = RP(Color.FromArgb(al, Color.White), 5)) g.DrawArc(p, cx - r, by - r, r * 2, r * 2, 225, 90);
+        }
+    }
+    void Cable(Graphics g, float cx, float cy, bool on)
+    {
+        // plugue RJ45 com cabo; pulsos de dados subindo pelo cabo
+        int al = on ? 255 : 110; var c = Color.FromArgb(al, Color.White);
+        var body = new RectangleF(cx - 15, cy - 22, 30, 24);
+        using (var p = new Pen(c, 3.5f)) using (var gp = Round(body, 7)) g.DrawPath(p, gp);
+        using (var b = new SolidBrush(c)) { g.FillRectangle(b, cx - 7, cy + 2, 14, 7); for (int k = -1; k <= 1; k++) g.FillRectangle(b, cx + k * 7 - 1.5f, cy - 16, 3, 8); }
+        using (var p = RP(c, 4)) g.DrawLine(p, cx, cy + 9, cx, cy + 28);
+        if (on) for (int k = 0; k < 2; k++) { float f = (ph + k * 0.5f) % 1f; float y = cy + 28 - f * 19;
+            using (var b = new SolidBrush(Color.FromArgb((int)(255 * (1 - f)), 190, 255, 215))) g.FillEllipse(b, cx - 5, y - 5, 10, 10); }
     }
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -587,40 +677,48 @@ class NetMonitor : Form
         var W = Color.White; float cx = 64, cy = 64;
         if (online == true)
         {
-            // anel pulsando + ondas de Wi-Fi acendendo em sequência
             float rr = 30 + ph * 26; int a = (int)(150 * (1 - ph));
             using (var p = new Pen(Color.FromArgb(a, 180, 255, 210), 3)) g.DrawEllipse(p, cx - rr, cy - rr, rr * 2, rr * 2);
             using (var b = new SolidBrush(Color.FromArgb(45, 255, 255, 255))) g.FillEllipse(b, cx - 34, cy - 34, 68, 68);
-            float by = cy + 14;
-            using (var b = new SolidBrush(W)) g.FillEllipse(b, cx - 4.5f, by - 4.5f, 9, 9);
-            for (int k = 1; k <= 3; k++)
-            {
-                float lit = (ph * 4) % 4; int al = lit >= k ? 255 : 90; float r = k * 11;
-                using (var p = new Pen(Color.FromArgb(al, W), 5) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round })
-                    g.DrawArc(p, cx - r, by - r, r * 2, r * 2, 225, 90);
-            }
+            if (wifi) Wifi(g, cx, cy, true); else Cable(g, cx, cy, true);
         }
         else if (online == false)
         {
-            // Wi-Fi apagado cortado + "piscar" de alerta
             float pulse = (float)(0.5 + 0.5 * Math.Sin(ph * Math.PI * 2));
             using (var b = new SolidBrush(Color.FromArgb((int)(30 + 40 * pulse), 255, 255, 255))) g.FillEllipse(b, cx - 36, cy - 36, 72, 72);
-            float by = cy + 14;
-            using (var b = new SolidBrush(Color.FromArgb(110, W))) g.FillEllipse(b, cx - 4.5f, by - 4.5f, 9, 9);
-            for (int k = 1; k <= 3; k++) { float r = k * 11;
-                using (var p = new Pen(Color.FromArgb(110, W), 5) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round })
-                    g.DrawArc(p, cx - r, by - r, r * 2, r * 2, 225, 90); }
-            using (var p = new Pen(Color.FromArgb((int)(170 + 85 * pulse), W), 6) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round })
-                g.DrawLine(p, cx - 26, cy - 24, cx + 26, cy + 28);
+            if (wifi) Wifi(g, cx, cy, false); else Cable(g, cx, cy, false);
+            using (var p = RP(Color.FromArgb((int)(170 + 85 * pulse), W), 6)) g.DrawLine(p, cx - 26, cy - 24, cx + 26, cy + 28);
         }
         else using (var p = new Pen(Color.FromArgb(200, W), 5)) g.DrawArc(p, cx - 22, cy - 22, 44, 44, ph * 360, 100);
 
+        string via = wifi ? "Wi-Fi" : "cabo";
         string a1 = online == null ? "Verificando conexão..." : online.Value ? "Online" : "Sem internet";
         var dur = DateTime.Now - since; string d = dur.TotalHours >= 1 ? (int)dur.TotalHours + " h " + dur.Minutes + " min" : dur.TotalMinutes >= 1 ? (int)dur.TotalMinutes + " min" : (int)dur.TotalSeconds + " s";
-        string a2 = online == true ? "Internet conectada  ·  latência " + ms + " ms" : online == false ? "Conexão perdida  ·  tentando reconectar..." : "";
+        string a2 = online == true ? "Via " + via + "  ·  ping " + ms + " ms  ·  link " + Spd(linkBps) : online == false ? "Conexão perdida  ·  tentando reconectar..." : "";
         string a3 = online == null ? "" : (online.Value ? "Estável há " : "Fora do ar há ") + d;
         using (var f1 = PCInfo.F(20f, true)) TextRenderer.DrawText(g, a1, f1, new Point(124, 16), W);
         using (var f2 = PCInfo.F(11f, false)) TextRenderer.DrawText(g, a2, f2, new Point(126, 58), Color.FromArgb(235, 255, 255, 255));
         using (var f3 = PCInfo.F(9.5f, false)) TextRenderer.DrawText(g, a3, f3, new Point(126, 86), Color.FromArgb(200, 255, 255, 255));
+
+        // olho: mostrar/ocultar detalhes de IP/rede
+        using (var b = new SolidBrush(Color.FromArgb(open ? 70 : 35, 255, 255, 255))) using (var gp = Round(eyeR, 10)) g.FillPath(b, gp);
+        TextRenderer.DrawText(g, open ? "" : "", MDL, eyeR, W, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+
+        copyR.Clear();
+        if (open)
+        {
+            int y0 = H0 + 4;
+            using (var b = new SolidBrush(Color.FromArgb(45, 0, 0, 0))) g.FillRectangle(b, 12, y0, Width - 24, Height - y0 - 12);
+            if (copied >= 0 && (DateTime.Now - copiedAt).TotalSeconds > 1.2) copied = -1;
+            using (var fk = PCInfo.F(9.5f, false)) using (var fv = PCInfo.F(10f, true))
+                for (int i = 0; i < info.Count; i++)
+                {
+                    int y = y0 + 6 + i * RH; var cr = new Rectangle(20, y + 1, 24, 24); copyR.Add(cr);
+                    if (hov == i) using (var b = new SolidBrush(Color.FromArgb(50, 255, 255, 255))) using (var gp = Round(cr, 6)) g.FillPath(b, gp);
+                    TextRenderer.DrawText(g, copied == i ? "" : "", MDL, cr, W, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                    TextRenderer.DrawText(g, info[i][0], fk, new Rectangle(52, y, 140, RH), Color.FromArgb(200, 255, 255, 255), TextFormatFlags.VerticalCenter);
+                    TextRenderer.DrawText(g, info[i][1], fv, new Rectangle(192, y, Width - 210, RH), W, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                }
+        }
     }
 }
