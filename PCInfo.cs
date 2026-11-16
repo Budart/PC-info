@@ -16,8 +16,8 @@ using System.Net.NetworkInformation;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("1.5.0.0")]
-[assembly: AssemblyFileVersion("1.5.0.0")]
+[assembly: AssemblyVersion("1.6.0.0")]
+[assembly: AssemblyFileVersion("1.6.0.0")]
 
 class PCInfo : Form
 {
@@ -547,15 +547,25 @@ class Loader : Control
 // Janela flutuante: status da internet (ping 8.8.8.8 / 1.1.1.1 a cada 2 s)
 class NetMonitor : Form
 {
-    bool? online = null; long ms = 0; bool busy = false;
-    System.Windows.Forms.Timer t = new System.Windows.Forms.Timer { Interval = 2000 };
+    bool? online = null; long ms = 0; bool busy = false; float ph = 0; DateTime since = DateTime.Now;
+    System.Windows.Forms.Timer t = new System.Windows.Forms.Timer { Interval = 2000 }, anim = new System.Windows.Forms.Timer { Interval = 33 };
+    static Color GBG = Color.FromArgb(30, 110, 72), RBG = Color.FromArgb(165, 42, 48), NBG = Color.FromArgb(50, 50, 58);
     public NetMonitor()
     {
         FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true; StartPosition = FormStartPosition.Manual;
-        Size = new Size(230, 64); BackColor = Color.FromArgb(24, 24, 28); DoubleBuffered = true;
+        Size = new Size(460, 128); BackColor = NBG; DoubleBuffered = true;
         var wa = Screen.PrimaryScreen.WorkingArea; Location = new Point(wa.Right - Width - 16, wa.Bottom - Height - 16);
+        try { using (var gp = PCInfo_Round(new RectangleF(0, 0, Width, Height), 16)) Region = new Region(gp); } catch { }
         t.Tick += (s, e) => Check(); t.Start(); Check();
+        anim.Tick += (s, e) => { ph = (ph + 0.033f) % 1f; Invalidate(); }; anim.Start();
+        VisibleChanged += (s, e) => anim.Enabled = Visible;
         MouseDown += (s, e) => { if (e.Button == MouseButtons.Right) Hide(); };
+    }
+    static System.Drawing.Drawing2D.GraphicsPath PCInfo_Round(RectangleF r, float d)
+    {
+        var p = new System.Drawing.Drawing2D.GraphicsPath();
+        p.AddArc(r.X, r.Y, d, d, 180, 90); p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); p.AddArc(r.X, r.Bottom - d, d, d, 90, 90); p.CloseFigure(); return p;
     }
     protected override bool ShowWithoutActivation { get { return true; } }
     void Check()
@@ -568,18 +578,49 @@ class NetMonitor : Form
             {
                 try { using (var p = new Ping()) { var r = p.Send(h, 1500); if (r.Status == IPStatus.Success) { ok = true; rt = r.RoundtripTime; break; } } } catch { }
             }
-            try { BeginInvoke((Action)(() => { online = ok; ms = rt; busy = false; Invalidate(); })); } catch { busy = false; }
+            try { BeginInvoke((Action)(() => { if (online != ok) since = DateTime.Now; online = ok; ms = rt; busy = false; BackColor = ok ? GBG : RBG; })); } catch { busy = false; }
         });
     }
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics; g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        Color c = online == null ? Color.Gray : online.Value ? Color.FromArgb(40, 200, 90) : Color.FromArgb(230, 60, 60);
-        using (var b = new SolidBrush(c)) { g.FillRectangle(b, 0, 0, 5, Height); g.FillEllipse(b, 20, Height / 2 - 9, 18, 18); }
-        string a = online == null ? "Verificando..." : online.Value ? "Conectado" : "Sem internet";
-        string sub = online == true ? "Ping " + ms + " ms" : online == false ? "Sem resposta de 8.8.8.8" : "";
-        using (var f1 = PCInfo.F(11f, true)) TextRenderer.DrawText(g, a, f1, new Point(50, 10), c);
-        using (var f2 = PCInfo.F(9f, false)) TextRenderer.DrawText(g, sub, f2, new Point(50, 34), Color.FromArgb(150, 150, 160));
-        using (var p = new Pen(Color.FromArgb(50, 50, 58))) g.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
+        var W = Color.White; float cx = 64, cy = 64;
+        if (online == true)
+        {
+            // anel pulsando + ondas de Wi-Fi acendendo em sequência
+            float rr = 30 + ph * 26; int a = (int)(150 * (1 - ph));
+            using (var p = new Pen(Color.FromArgb(a, 180, 255, 210), 3)) g.DrawEllipse(p, cx - rr, cy - rr, rr * 2, rr * 2);
+            using (var b = new SolidBrush(Color.FromArgb(45, 255, 255, 255))) g.FillEllipse(b, cx - 34, cy - 34, 68, 68);
+            float by = cy + 14;
+            using (var b = new SolidBrush(W)) g.FillEllipse(b, cx - 4.5f, by - 4.5f, 9, 9);
+            for (int k = 1; k <= 3; k++)
+            {
+                float lit = (ph * 4) % 4; int al = lit >= k ? 255 : 90; float r = k * 11;
+                using (var p = new Pen(Color.FromArgb(al, W), 5) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round })
+                    g.DrawArc(p, cx - r, by - r, r * 2, r * 2, 225, 90);
+            }
+        }
+        else if (online == false)
+        {
+            // Wi-Fi apagado cortado + "piscar" de alerta
+            float pulse = (float)(0.5 + 0.5 * Math.Sin(ph * Math.PI * 2));
+            using (var b = new SolidBrush(Color.FromArgb((int)(30 + 40 * pulse), 255, 255, 255))) g.FillEllipse(b, cx - 36, cy - 36, 72, 72);
+            float by = cy + 14;
+            using (var b = new SolidBrush(Color.FromArgb(110, W))) g.FillEllipse(b, cx - 4.5f, by - 4.5f, 9, 9);
+            for (int k = 1; k <= 3; k++) { float r = k * 11;
+                using (var p = new Pen(Color.FromArgb(110, W), 5) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round })
+                    g.DrawArc(p, cx - r, by - r, r * 2, r * 2, 225, 90); }
+            using (var p = new Pen(Color.FromArgb((int)(170 + 85 * pulse), W), 6) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round })
+                g.DrawLine(p, cx - 26, cy - 24, cx + 26, cy + 28);
+        }
+        else using (var p = new Pen(Color.FromArgb(200, W), 5)) g.DrawArc(p, cx - 22, cy - 22, 44, 44, ph * 360, 100);
+
+        string a1 = online == null ? "Verificando conexão..." : online.Value ? "Online" : "Sem internet";
+        var dur = DateTime.Now - since; string d = dur.TotalHours >= 1 ? (int)dur.TotalHours + " h " + dur.Minutes + " min" : dur.TotalMinutes >= 1 ? (int)dur.TotalMinutes + " min" : (int)dur.TotalSeconds + " s";
+        string a2 = online == true ? "Internet conectada  ·  latência " + ms + " ms" : online == false ? "Conexão perdida  ·  tentando reconectar..." : "";
+        string a3 = online == null ? "" : (online.Value ? "Estável há " : "Fora do ar há ") + d;
+        using (var f1 = PCInfo.F(20f, true)) TextRenderer.DrawText(g, a1, f1, new Point(124, 16), W);
+        using (var f2 = PCInfo.F(11f, false)) TextRenderer.DrawText(g, a2, f2, new Point(126, 58), Color.FromArgb(235, 255, 255, 255));
+        using (var f3 = PCInfo.F(9.5f, false)) TextRenderer.DrawText(g, a3, f3, new Point(126, 86), Color.FromArgb(200, 255, 255, 255));
     }
 }
