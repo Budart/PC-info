@@ -652,86 +652,172 @@ static class Tweaks {
     }
 }
 
-// Relatório de RAM/CPU: retrato do Gerenciador de Tarefas no momento do clique
+// Relatório de RAM/CPU: retrato do Gerenciador de Tarefas no momento do clique (+ Super Clean/Boost)
+class ProcRow {
+    public string Name, Desc, Path, Kind; public int Inst, Threads, Img = -1; public long Ram, Priv; public double Pct, Cpu; public bool Keep; public List<int> Pids = new List<int>();
+}
 class RamReport : UserControl {
     [StructLayout(LayoutKind.Sequential)] class MEMSTAT { public int Len = 64; public int Load; public ulong Total, Avail, PTot, PAvail, VTot, VAvail, VExt; }
     [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx([In, Out] MEMSTAT m);
-    static readonly Color ACC = Color.FromArgb(255, 170, 40);
-    ListView lv = new ListView(); Label head = new Label(), sub = new Label(); ImageList img = new ImageList { ImageSize = new Size(20, 20), ColorDepth = ColorDepth.Depth32Bit };
-    LBtn upd = new LBtn("⟳  Atualizar", false) { Accent = ACC }, cpy = new LBtn("Copiar relatório", true) { Accent = ACC };
-    List<string[]> data = new List<string[]>(); bool busy;
+    [DllImport("psapi.dll")] static extern bool EmptyWorkingSet(IntPtr h);
+    static readonly Color ACC = Color.FromArgb(255, 170, 40), RED = Color.FromArgb(235, 70, 80), GRN = Color.FromArgb(70, 200, 120);
+    const int MAXW = 980;
+    ListView lv = new ListView(); Label head = new Label(), sub = new Label(), sub2 = new Label(); ImageList img = new ImageList { ImageSize = new Size(20, 20), ColorDepth = ColorDepth.Depth32Bit };
+    LBtn upd = new LBtn("⟳  Atualizar", false) { Accent = ACC }, cpy = new LBtn("Copiar relatório", false) { Accent = ACC }, sup = new LBtn("⚡  Super Clean/Boost", true) { Accent = RED };
+    List<ProcRow> rows = new List<ProcRow>(); bool busy; int sortCol = 2; bool desc = true; string stamp = "";
+    static readonly string[] COLS = { "Processo", "Tipo", "RAM", "Privada", "% RAM", "CPU", "Inst.", "Threads" };
+    static readonly int[] WID = { 0, 92, 92, 92, 74, 66, 54, 70 };
+
+    // Essenciais: Windows, drivers (GPU/áudio/rede/chipset), lojas/jogos e o próprio PC Info
+    static readonly HashSet<string> ESS = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+        "Idle","System","Registry","smss","csrss","wininit","winlogon","services","lsass","LsaIso","svchost","fontdrvhost","dwm","explorer","sihost","taskhostw",
+        "RuntimeBroker","ctfmon","conhost","dllhost","audiodg","spoolsv","SearchIndexer","SecurityHealthService","SecurityHealthSystray","MsMpEng","NisSrv","smartscreen",
+        "StartMenuExperienceHost","ShellExperienceHost","SearchHost","SearchApp","TextInputHost","ApplicationFrameHost","WUDFHost","Memory Compression","LockApp",
+        "WmiPrvSE","dasHost","WLANExt","SgrmBroker","MoUsoCoreWorker","CompPkgSrv","ShellHost","Widgets","UserOOBEBroker","SystemSettingsBroker","atiesrxx","atieclxx",
+        "nvcontainer","NVDisplay.Container","nvsphelper64","RtkAudUService64","RAVBg64","RAVCpl64","igfxEM","igfxHK","igfxTray","IntelCpHDCPSvc","IntelCpHeciSvc",
+        "steam","steamwebhelper","steamservice","EpicGamesLauncher","EpicWebHelper","GameBar","GameBarFTServer","gamingservices","gamingservicesnet","GameInputSvc",
+        "XboxPcApp","XboxPcAppFT","Battle.net","Agent","RiotClientServices","vgc","vgtray","EasyAntiCheat","EasyAntiCheat_EOS","BEService","PCInfo","AggregatorHost","MpDefenderCoreService"
+    };
+    static readonly string[] GAMEDIRS = { @"\steamapps\", @"\epic games\", @"\xboxgames\", @"\riot games\", @"\gog games\", @"\gog galaxy\games\", @"\ea games\", @"\ubisoft game launcher\games\", @"\battle.net\", @"\games\" };
+    static readonly string[] DRVDIRS = { @"\nvidia", @"\amd\", @"\ati technologies\", @"\realtek\", @"\intel\", @"\windows\system32\driverstore\" };
+    static string Classify(string name, string path, int session, out bool keep) {
+        keep = true; string p = (path ?? "").ToLower(); string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows).ToLower();
+        if (session == 0) return "Serviço";
+        if (ESS.Contains(name)) return name.StartsWith("steam", StringComparison.OrdinalIgnoreCase) || name.Contains("Epic") || name.Contains("Gam") || name.Contains("Xbox") || name.Contains("Cheat") ? "Jogos" : "Sistema";
+        if (DRVDIRS.Any(d => p.Contains(d))) return "Driver";
+        if (GAMEDIRS.Any(d => p.Contains(d))) return "Jogo";
+        if (p.StartsWith(win)) return "Sistema";
+        if (p == "") return "Sistema"; // sem acesso ao caminho: protegido
+        keep = false; return "App";
+    }
+
     public RamReport() {
         BackColor = C.Bg; DoubleBuffered = true; Padding = new Padding(20, 8, 20, 12);
+        Resize += (s, e) => { int h = Math.Max(20, (Width - MAXW) / 2); if (Padding.Left != h) Padding = new Padding(h, 8, h, 12); };
         head.Font = PCInfo.F(19f, true); head.ForeColor = Color.White; head.Dock = DockStyle.Top; head.Height = 40; head.Text = "Relatório de RAM";
-        sub.Font = PCInfo.F(10f, false); sub.ForeColor = C.Mute; sub.Dock = DockStyle.Top; sub.Height = 30;
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 54, BackColor = C.Bg, Padding = new Padding(0, 4, 0, 6) };
-        upd.Width = 150; cpy.Width = 170; upd.Margin = new Padding(0, 0, 10, 0); bar.Controls.Add(upd); bar.Controls.Add(cpy);
-        upd.Click += (s, e) => Snapshot(); cpy.Click += (s, e) => Copy();
+        sub.Font = PCInfo.F(10f, true); sub.ForeColor = C.Mute; sub.Dock = DockStyle.Top; sub.Height = 24;
+        sub2.Font = PCInfo.F(9f, false); sub2.ForeColor = C.Mute; sub2.Dock = DockStyle.Top; sub2.Height = 22;
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 56, BackColor = C.Bg, Padding = new Padding(0, 6, 0, 6), WrapContents = false };
+        upd.Width = 130; cpy.Width = 160; sup.Width = 210; upd.Margin = cpy.Margin = new Padding(0, 0, 10, 0);
+        bar.Controls.Add(upd); bar.Controls.Add(cpy); bar.Controls.Add(sup);
+        upd.Click += (s, e) => Snapshot(null); cpy.Click += (s, e) => Copy(); sup.Click += (s, e) => SuperBoost();
         lv.Dock = DockStyle.Fill; lv.View = View.Details; lv.FullRowSelect = true; lv.BorderStyle = BorderStyle.None; lv.OwnerDraw = true;
         lv.BackColor = C.Card; lv.ForeColor = C.Text; lv.Font = PCInfo.F(10f, false);
-        foreach (var c in new[] { "Processo", "Instâncias", "RAM", "% da RAM", "CPU" }) lv.Columns.Add(c, 100, c == "Processo" ? HorizontalAlignment.Left : HorizontalAlignment.Right);
+        for (int i = 0; i < COLS.Length; i++) lv.Columns.Add(COLS[i], Math.Max(60, WID[i]), i <= 1 ? HorizontalAlignment.Left : HorizontalAlignment.Right);
+        lv.ColumnClick += (s, e) => { if (sortCol == e.Column) desc = !desc; else { sortCol = e.Column; desc = e.Column >= 2; } Fill(); };
         lv.DrawColumnHeader += (s, e) => {
             using (var b = new SolidBrush(Color.FromArgb(24, 24, 28))) e.Graphics.FillRectangle(b, e.Bounds);
-            var f = TextFormatFlags.VerticalCenter | (e.ColumnIndex == 0 ? TextFormatFlags.Left : TextFormatFlags.Right);
-            using (var ft = PCInfo.F(9f, true)) TextRenderer.DrawText(e.Graphics, e.Header.Text.ToUpper(), ft, new Rectangle(e.Bounds.X + 10, e.Bounds.Y, e.Bounds.Width - 20, e.Bounds.Height), C.Mute, f);
+            var f = TextFormatFlags.VerticalCenter | (e.ColumnIndex <= 1 ? TextFormatFlags.Left : TextFormatFlags.Right);
+            string t = e.Header.Text.ToUpper() + (e.ColumnIndex == sortCol ? (desc ? "  ▼" : "  ▲") : "");
+            using (var ft = PCInfo.F(8.5f, true)) TextRenderer.DrawText(e.Graphics, t, ft, new Rectangle(e.Bounds.X + 8, e.Bounds.Y, e.Bounds.Width - 14, e.Bounds.Height), e.ColumnIndex == sortCol ? ACC : C.Mute, f);
         };
         lv.DrawItem += (s, e) => { };
         lv.DrawSubItem += (s, e) => {
-            var g = e.Graphics; var bg = e.Item.Selected ? Color.FromArgb(70, ACC) : e.ItemIndex % 2 == 0 ? C.Card : Color.FromArgb(24, 24, 28);
-            using (var b = new SolidBrush(bg)) g.FillRectangle(b, e.Bounds);
-            var r = e.Bounds;
+            var g = e.Graphics; var r = e.Bounds; var row = e.Item.Tag as ProcRow; if (row == null) return;
+            var bg = e.Item.Selected ? Color.FromArgb(70, ACC) : e.ItemIndex % 2 == 0 ? C.Card : Color.FromArgb(24, 24, 28);
+            using (var b = new SolidBrush(bg)) g.FillRectangle(b, r);
             if (e.ColumnIndex == 0) {
-                int ix = e.Item.Tag is int ? (int)e.Item.Tag : -1; if (ix >= 0 && ix < img.Images.Count) g.DrawImage(img.Images[ix], r.X + 8, r.Y + (r.Height - 20) / 2, 20, 20);
-                TextRenderer.DrawText(g, e.SubItem.Text, lv.Font, new Rectangle(r.X + 36, r.Y, r.Width - 40, r.Height), C.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                if (row.Img >= 0 && row.Img < img.Images.Count) g.DrawImage(img.Images[row.Img], r.X + 8, r.Y + (r.Height - 20) / 2, 20, 20);
+                TextRenderer.DrawText(g, row.Name, lv.Font, new Rectangle(r.X + 36, r.Y + 2, r.Width - 40, r.Height / 2), C.Text, TextFormatFlags.Bottom | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                using (var fd = PCInfo.F(8f, false)) TextRenderer.DrawText(g, row.Desc, fd, new Rectangle(r.X + 36, r.Y + r.Height / 2, r.Width - 40, r.Height / 2 - 2), C.Mute, TextFormatFlags.Top | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            } else if (e.ColumnIndex == 1) {
+                var c = row.Keep ? GRN : RED;
+                using (var b = new SolidBrush(Color.FromArgb(40, c))) using (var gp = C.Round(new RectangleF(r.X + 6, r.Y + 9, r.Width - 12, r.Height - 18), 6)) g.FillPath(b, gp);
+                using (var fd = PCInfo.F(8.5f, true)) TextRenderer.DrawText(g, row.Kind, fd, new Rectangle(r.X + 6, r.Y, r.Width - 12, r.Height), c, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
             } else {
-                if (e.ColumnIndex == 3) { double pc; if (double.TryParse(e.SubItem.Text.TrimEnd('%', ' '), out pc)) using (var b = new SolidBrush(Color.FromArgb(90, ACC))) g.FillRectangle(b, r.X + 6, r.Bottom - 6, (int)((r.Width - 12) * Math.Min(1, pc / 25)), 3); }
-                TextRenderer.DrawText(g, e.SubItem.Text, lv.Font, new Rectangle(r.X, r.Y, r.Width - 12, r.Height), e.ColumnIndex == 2 ? Color.White : C.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+                if (e.ColumnIndex == 4) using (var b = new SolidBrush(Color.FromArgb(90, ACC))) g.FillRectangle(b, r.X + 6, r.Bottom - 6, (int)((r.Width - 12) * Math.Min(1, row.Pct / 25)), 3);
+                if (e.ColumnIndex == 5 && row.Cpu > 0.05) using (var b = new SolidBrush(Color.FromArgb(90, 0, 170, 255))) g.FillRectangle(b, r.X + 6, r.Bottom - 6, (int)((r.Width - 12) * Math.Min(1, row.Cpu / 50)), 3);
+                TextRenderer.DrawText(g, e.SubItem.Text, lv.Font, new Rectangle(r.X, r.Y, r.Width - 10, r.Height), e.ColumnIndex == 2 ? Color.White : C.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
             }
         };
-        lv.SmallImageList = new ImageList { ImageSize = new Size(1, 30) }; // altura da linha
-        lv.Resize += (s, e) => { int w = lv.ClientSize.Width; lv.Columns[0].Width = Math.Max(200, w - 4 * 120 - 4); for (int i = 1; i < 5; i++) lv.Columns[i].Width = 120; };
+        lv.SmallImageList = new ImageList { ImageSize = new Size(1, 38) }; // altura da linha
+        lv.Resize += (s, e) => { int w = lv.ClientSize.Width, o = 0; for (int i = 1; i < COLS.Length; i++) { lv.Columns[i].Width = WID[i]; o += WID[i]; } lv.Columns[0].Width = Math.Max(180, w - o - 2); };
         var card = new Panel { Dock = DockStyle.Fill, BackColor = C.Card, Padding = new Padding(1) }; card.Controls.Add(lv);
-        Controls.Add(card); Controls.Add(bar); Controls.Add(sub); Controls.Add(head);
+        Controls.Add(card); Controls.Add(bar); Controls.Add(sub2); Controls.Add(sub); Controls.Add(head);
     }
-    static string Fmt(long b) { return Cleaner.Fmt(b); }
-    public void Snapshot() {
-        if (busy) return; busy = true; sub.Text = "Medindo processos (CPU em ~1 s)…"; upd.Enabled = false;
+    static string Fmt(long b) { return b >= 1L << 30 ? (b / (double)(1L << 30)).ToString("0.00") + " GB" : (b / (double)(1L << 20)).ToString("0") + " MB"; }
+    object Key(ProcRow r) {
+        switch (sortCol) { case 0: return r.Name.ToLower(); case 1: return r.Kind; case 2: return r.Ram; case 3: return r.Priv; case 4: return r.Pct; case 5: return r.Cpu; case 6: return r.Inst; default: return r.Threads; }
+    }
+    void Fill() {
+        var sorted = desc ? rows.OrderByDescending(Key).ToList() : rows.OrderBy(Key).ToList();
+        lv.BeginUpdate(); lv.Items.Clear();
+        foreach (var r in sorted) lv.Items.Add(new ListViewItem(new[] { r.Name, r.Kind, Fmt(r.Ram), Fmt(r.Priv), r.Pct.ToString("0.0") + "%", r.Cpu.ToString("0.0") + "%", r.Inst.ToString(), r.Threads.ToString() }) { Tag = r });
+        lv.EndUpdate(); lv.Invalidate();
+    }
+    public void Snapshot(Action done) {
+        if (busy) return; busy = true; sub.Text = "Medindo processos (CPU em ~1 s)…"; sub.ForeColor = C.Mute; upd.Enabled = sup.Enabled = false;
         new Thread(() => {
-            var t0 = new Dictionary<int, TimeSpan>(); var procs = Process.GetProcesses();
+            var t0 = new Dictionary<int, TimeSpan>(); var procs = Process.GetProcesses(); int me = Process.GetCurrentProcess().SessionId;
             foreach (var p in procs) try { t0[p.Id] = p.TotalProcessorTime; } catch { }
             var sw = Stopwatch.StartNew(); Thread.Sleep(1000); double el = sw.Elapsed.TotalMilliseconds * Environment.ProcessorCount;
             var mem = new MEMSTAT(); GlobalMemoryStatusEx(mem);
-            var groups = new Dictionary<string, object[]>(); // nome -> [instâncias, ram, cpuMs, caminho]
+            var g = new Dictionary<string, ProcRow>(); double cpuTot = 0; int thTot = 0;
             foreach (var p in procs) {
                 try {
-                    long ws = p.WorkingSet64; double cpu = 0; TimeSpan a;
-                    if (t0.TryGetValue(p.Id, out a)) try { cpu = (p.TotalProcessorTime - a).TotalMilliseconds; } catch { }
-                    string n = p.ProcessName; object[] gr;
-                    if (!groups.TryGetValue(n, out gr)) { string path = null; try { path = p.MainModule.FileName; } catch { } gr = new object[] { 0, 0L, 0.0, path }; groups[n] = gr; }
-                    gr[0] = (int)gr[0] + 1; gr[1] = (long)gr[1] + ws; gr[2] = (double)gr[2] + cpu;
+                    string n = p.ProcessName; ProcRow r; int sess = 0; try { sess = p.SessionId; } catch { }
+                    string key = n + (sess == 0 ? "|svc" : "");
+                    if (!g.TryGetValue(key, out r)) {
+                        string path = null; try { path = p.MainModule.FileName; } catch { }
+                        bool keep; r = new ProcRow { Name = n, Path = path, Kind = Classify(n, path, sess, out keep), Keep = keep };
+                        try { if (path != null) { var fv = FileVersionInfo.GetVersionInfo(path); r.Desc = !string.IsNullOrEmpty(fv.FileDescription) ? fv.FileDescription : fv.CompanyName; } } catch { }
+                        if (string.IsNullOrEmpty(r.Desc)) r.Desc = path ?? (sess == 0 ? "Processo de serviço do Windows" : "");
+                        g[key] = r;
+                    }
+                    TimeSpan a; double cpu = 0; if (t0.TryGetValue(p.Id, out a)) try { cpu = (p.TotalProcessorTime - a).TotalMilliseconds * 100 / el; } catch { }
+                    r.Inst++; r.Pids.Add(p.Id); r.Ram += p.WorkingSet64; try { r.Priv += p.PrivateMemorySize64; } catch { }
+                    try { r.Threads += p.Threads.Count; } catch { } r.Cpu += cpu; cpuTot += cpu; thTot += p.Threads.Count;
                 } catch { }
             }
-            var rows = groups.OrderByDescending(kv => (long)kv.Value[1]).ToList();
-            var icons = new List<Bitmap>(); var items = new List<ListViewItem>(); data = new List<string[]>();
-            foreach (var kv in rows) {
-                long ram = (long)kv.Value[1]; double pc = mem.Total > 0 ? ram * 100.0 / mem.Total : 0, cp = (double)kv.Value[2] * 100 / el;
-                string[] v = { kv.Key, kv.Value[0].ToString(), Fmt(ram), pc.ToString("0.0") + "%", cp.ToString("0.0") + "%" };
-                data.Add(v);
-                int ii = -1; var path = kv.Value[3] as string;
-                if (path != null) try { using (var ic = Icon.ExtractAssociatedIcon(path)) { icons.Add(new Bitmap(ic.ToBitmap(), 20, 20)); ii = icons.Count - 1; } } catch { }
-                items.Add(new ListViewItem(v) { Tag = ii });
+            var list = g.Values.ToList(); var icons = new List<Bitmap>();
+            foreach (var r in list) {
+                r.Pct = mem.Total > 0 ? r.Ram * 100.0 / mem.Total : 0;
+                if (r.Path != null) try { using (var ic = Icon.ExtractAssociatedIcon(r.Path)) { icons.Add(new Bitmap(ic.ToBitmap(), 20, 20)); r.Img = icons.Count - 1; } } catch { }
             }
-            string s2 = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") + "  ·  RAM em uso: " + Fmt((long)(mem.Total - mem.Avail)) + " de " + Fmt((long)mem.Total) + " (" + mem.Load + "%)  ·  livre: " + Fmt((long)mem.Avail) + "  ·  " + procs.Length + " processos";
+            int apps = list.Count(r => !r.Keep); long appRam = list.Where(r => !r.Keep).Sum(r => r.Ram);
+            stamp = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+            string s1 = stamp + "  ·  RAM em uso: " + Fmt((long)(mem.Total - mem.Avail)) + " de " + Fmt((long)mem.Total) + " (" + mem.Load + "%)  ·  livre: " + Fmt((long)mem.Avail) + "  ·  CPU: " + cpuTot.ToString("0") + "%";
+            string s2 = procs.Length + " processos  ·  " + list.Count + " programas  ·  " + thTot + " threads  ·  memória virtual em uso: " + Fmt((long)(mem.PTot - mem.PAvail)) + " de " + Fmt((long)mem.PTot)
+                + "  ·  não essenciais: " + apps + " (" + Fmt(appRam) + ")";
             BeginInvoke((Action)(() => {
-                lv.BeginUpdate(); lv.Items.Clear(); img.Images.Clear(); foreach (var b in icons) img.Images.Add(b);
-                lv.Items.AddRange(items.ToArray()); lv.EndUpdate(); sub.Text = s2; sub.ForeColor = ACC; upd.Enabled = true; busy = false;
+                rows = list; img.Images.Clear(); foreach (var b in icons) img.Images.Add(b); Fill();
+                sub.Text = s1; sub.ForeColor = ACC; sub2.Text = s2; upd.Enabled = sup.Enabled = true; busy = false;
+                if (done != null) done();
             }));
         }) { IsBackground = true }.Start();
     }
+    // Super Clean/Boost: tira o retrato, mantém só o essencial (Windows, drivers, jogos/lojas) e encerra todo o resto
+    public bool Pending; public void SuperBoostLater() { Pending = false; SuperBoost(); }
+    public void SuperBoost() {
+        Snapshot(() => {
+            var kill = rows.Where(r => !r.Keep).OrderByDescending(r => r.Ram).ToList();
+            if (kill.Count == 0) { sub2.Text = "Nada a encerrar: só há processos essenciais abertos."; return; }
+            string names = string.Join(", ", kill.Take(25).Select(r => r.Name)) + (kill.Count > 25 ? " e mais " + (kill.Count - 25) + "…" : "");
+            var ok = MessageBox.Show(FindForm(),
+                "ATENÇÃO: o Super Clean/Boost vai FECHAR " + kill.Count + " programas (" + Fmt(kill.Sum(r => r.Ram)) + " de RAM) sem pedir para salvar.\n\n" +
+                "Ficam abertos só o Windows, drivers (vídeo, áudio, rede), lojas/jogos (Steam, Epic, Xbox, Battle.net, Riot) e o PC Info.\n\n" +
+                "Salve o que estiver fazendo antes de continuar.\n\nSerão fechados: " + names + "\n\nContinuar?",
+                "Super Clean/Boost", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+            if (ok != DialogResult.Yes) return;
+            sup.Enabled = upd.Enabled = false; sub2.Text = "Encerrando programas…"; Refresh();
+            new Thread(() => {
+                int n = 0; long freed = 0;
+                foreach (var r in kill) foreach (var id in r.Pids) try { using (var p = Process.GetProcessById(id)) { p.Kill(); n++; } } catch { }
+                freed = kill.Sum(r => r.Ram);
+                foreach (var p in Process.GetProcesses()) try { EmptyWorkingSet(p.Handle); } catch { }
+                try { Tweaks.PurgeStandby(); } catch { }
+                Cleaner.FlushDns();
+                Thread.Sleep(800);
+                BeginInvoke((Action)(() => Snapshot(() => { sub2.Text = "Super Clean/Boost concluído: " + n + " processos encerrados · ~" + Fmt(freed) + " liberados + RAM ociosa/standby limpa. " + sub2.Text; sub2.ForeColor = GRN; })));
+            }) { IsBackground = true }.Start();
+        });
+    }
     void Copy() {
-        var sb = new System.Text.StringBuilder(); sb.AppendLine("RELATÓRIO DE RAM - " + sub.Text); sb.AppendLine();
-        sb.AppendLine(string.Format("{0,-40}{1,6}{2,12}{3,9}{4,9}", "Processo", "Inst.", "RAM", "%RAM", "CPU"));
-        foreach (var d in data) sb.AppendLine(string.Format("{0,-40}{1,6}{2,12}{3,9}{4,9}", d[0].Length > 39 ? d[0].Substring(0, 39) : d[0], d[1], d[2], d[3], d[4]));
+        var sb = new System.Text.StringBuilder(); sb.AppendLine("RELATÓRIO DE RAM - " + sub.Text); sb.AppendLine(sub2.Text); sb.AppendLine();
+        string f = "{0,-34}{1,-9}{2,11}{3,11}{4,8}{5,8}{6,6}{7,8}  {8}";
+        sb.AppendLine(string.Format(f, "Processo", "Tipo", "RAM", "Privada", "%RAM", "CPU", "Inst", "Threads", "Descrição"));
+        foreach (ListViewItem it in lv.Items) { var r = (ProcRow)it.Tag;
+            sb.AppendLine(string.Format(f, r.Name.Length > 33 ? r.Name.Substring(0, 33) : r.Name, r.Kind, Fmt(r.Ram), Fmt(r.Priv), r.Pct.ToString("0.0") + "%", r.Cpu.ToString("0.0") + "%", r.Inst, r.Threads, r.Desc)); }
         try { Clipboard.SetText(sb.ToString()); } catch { }
     }
 }

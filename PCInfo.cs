@@ -16,8 +16,8 @@ using System.Net.NetworkInformation;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("2.2.0.0")]
-[assembly: AssemblyFileVersion("2.2.0.0")]
+[assembly: AssemblyVersion("2.3.0.0")]
+[assembly: AssemblyFileVersion("2.3.0.0")]
 
 class PCInfo : Form
 {
@@ -58,7 +58,7 @@ class PCInfo : Form
     }
     // Navegação: menu lateral troca o conteúdo (PC Info | Clean/Boost) sem abrir janelas
     Panel infoPane, side; LimpaScreen limpa; SideBtn navInfo, navClean, sideToggle; List<SideBtn> infoActs = new List<SideBtn>(); bool sideOpen = true;
-    RamReport ram; SideBtn bRam, sepClean;
+    RamReport ram; SideBtn bRam, bSuper, sepClean;
     void ShowPage(bool clean) { ShowPage(clean ? 1 : 0); }
     void ShowPage(int pg) // 0 = informações, 1 = Clean/Boost, 2 = relatório de RAM
     {
@@ -67,10 +67,10 @@ class PCInfo : Form
         (pg == 0 ? (Control)infoPane : pg == 1 ? (Control)limpa : ram).BringToFront();
         navInfo.Active = pg == 0; navClean.Active = pg >= 1; bRam.Active = pg == 2;
         foreach (var b in infoActs) b.Visible = pg == 0;
-        sepClean.Visible = bRam.Visible = pg >= 1;
+        sepClean.Visible = bRam.Visible = bSuper.Visible = pg >= 1;
         foreach (Control c in side.Controls) c.Invalidate();
         ResumeLayout(true);
-        if (pg == 2) ram.Snapshot();
+        if (pg == 2 && !ram.Pending) ram.Snapshot(null);
     }
     void ToggleSide()
     {
@@ -106,7 +106,8 @@ class PCInfo : Form
         infoActs.AddRange(new[] { sep, bMode, bUpd, bSel, bAll, bSave });
         sepClean = new SideBtn("", "AÇÕES", null) { Caption = true, Visible = false };
         bRam = new SideBtn("\uE950", "Relatório de RAM", Color.FromArgb(255, 170, 40)) { Visible = false }; bRam.Click += (s, e) => ShowPage(2);
-        var order = new List<SideBtn> { sideToggle, navInfo, navClean, navNet, sep, bMode, bUpd, bSel, bAll, bSave, sepClean, bRam };
+        bSuper = new SideBtn("\uE945", "Super Clean/Boost", Color.FromArgb(235, 70, 80)) { Visible = false }; bSuper.Click += (s, e) => { if (!ram.Visible) { ram.Pending = true; ShowPage(2); ram.SuperBoostLater(); } else ram.SuperBoost(); };
+        var order = new List<SideBtn> { sideToggle, navInfo, navClean, navNet, sep, bMode, bUpd, bSel, bAll, bSave, sepClean, bRam, bSuper };
         for (int k = order.Count - 1; k >= 0; k--) { order[k].Dock = DockStyle.Top; side.Controls.Add(order[k]); }
 
         // cards de destaque
