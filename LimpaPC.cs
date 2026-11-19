@@ -26,11 +26,11 @@ static class C {
     }
 }
 
-enum Kind { Files, Bin, Dns, Reg, Proc, Power, Wu }
+enum Kind { Files, Bin, Dns, Reg, Proc, Power, Wu, Tweak }
 
 class Item {
     public string Name; public Kind Kind; public string[] Paths; public string RegKind; public bool On = true;
-    public long Bytes; public List<RegEntry> Reg; public string Info = "—"; public bool Hi;
+    public Action Act; public long Bytes; public List<RegEntry> Reg; public string Info = "—"; public bool Hi;
 }
 class RegEntry { public RegistryKey Root; public string Key; public string Value; }
 
@@ -496,6 +496,7 @@ class BoosterPanel : UserControl {
     List<Item> items = new List<Item>();
     System.Windows.Forms.Timer meas = new System.Windows.Forms.Timer { Interval = 5000 };
 
+    void T(string n, bool on, Action a) { items.Add(new Item { Name = n, Kind = Kind.Tweak, On = on, Act = a }); list.Rows.Add(items.Last()); }
     void P(string n, bool on, params string[] procs) { items.Add(new Item { Name = n, Kind = Kind.Proc, Paths = procs, On = on }); list.Rows.Add(items.Last()); }
 
     public BoosterPanel() {
@@ -512,6 +513,12 @@ class BoosterPanel : UserControl {
         P("Torrent (qBittorrent, uTorrent…)", true, "qbittorrent", "uTorrent", "BitTorrent", "Deluge", "transmission-qt");
         P("Lojas em 2º plano (EA, Ubisoft, Battle.net)", false, "EADesktop", "EABackgroundService", "UbisoftConnect", "upc", "Battle.net", "EpicGamesLauncher", "GalaxyClient");
         P("RGB e periféricos (iCUE, Armoury, G HUB)", false, "iCUE", "ArmouryCrate", "ArmourySocketServer", "lghub", "lghub_agent", "RazerCentralService", "SignalRgb", "OpenRGB");
+        P("Overlays e utilitários de GPU (NVIDIA, Adrenalin, Afterburner)", false, "NVIDIA app", "NVIDIA Share", "nvcontainer", "RadeonSoftware", "AMDRSServ", "MSIAfterburner", "RTSS");
+        P("Gravação e stream (OBS, Streamlabs)", false, "obs64", "Streamlabs OBS", "Streamlabs Desktop", "XSplit.Core");
+        P("VPNs (NordVPN, Proton, Express…)", false, "NordVPN", "nordvpn-service", "ProtonVPN", "ProtonVPNService", "ExpressVPN", "expressvpnd", "Surfshark");
+        P("Utilitários do fabricante (Lenovo, Dell, HP, ASUS)", true, "LenovoVantage", "LenovoVantageService", "SupportAssistAgent", "Dell.TechHub", "HPSmart", "HPPrintScanDoctor", "AsusSoftwareManager", "MyASUS", "AcerQuickAccess");
+        P("Assistentes de IA (ChatGPT, Claude, Gemini)", false, "ChatGPT", "Claude", "Gemini", "Perplexity");
+        P("Bloco de notas e utilitários (Notion, Evernote, Obsidian)", false, "Notion", "Evernote", "Obsidian", "Todoist");
         P("Editores (VS Code, Photoshop…)", false, "Code", "Photoshop", "Illustrator", "AfterFX", "Premiere Pro", "blender");
         list.Rows.Add("SOCIAL E MÚSICA");
         P("Discord", false, "Discord");
@@ -522,6 +529,14 @@ class BoosterPanel : UserControl {
         items.Add(new Item { Name = "Liberar RAM ociosa dos processos", Kind = Kind.Bin }); list.Rows.Add(items.Last());
         items.Add(new Item { Name = "Pausar Windows Update (até reiniciar)", Kind = Kind.Wu, On = false }); list.Rows.Add(items.Last());
         items.Add(new Item { Name = "Limpar cache de DNS", Kind = Kind.Dns }); list.Rows.Add(items.Last());
+        T("Liberar memória em espera (standby)", true, Tweaks.PurgeStandby);
+        T("Ativar Modo de Jogo do Windows", true, Tweaks.GameMode);
+        T("Desativar gravação em 2º plano (Xbox DVR)", false, Tweaks.NoDvr);
+        T("Prioridade de CPU/GPU para jogos (MMCSS)", false, Tweaks.Mmcss);
+        T("Desativar aceleração do mouse", false, Tweaks.NoMouseAccel);
+        T("Pausar indexação de pesquisa (até reiniciar)", false, () => Tweaks.StopSvc("WSearch"));
+        T("Pausar SysMain / Superfetch (até reiniciar)", false, () => Tweaks.StopSvc("SysMain"));
+        T("Reduzir efeitos visuais (animações)", false, Tweaks.LessFx);
 
         var head = new Header { Dock = DockStyle.Top, Title = "Game Booster", Sub = "Fecha apps em segundo plano antes de jogar", Accent = ACC, Icon = Icons.Gamepad };
         var sel = new SelAll { Dock = DockStyle.Left, Width = 170, Accent = ACC, On = false };
@@ -578,11 +593,145 @@ class BoosterPanel : UserControl {
                     break;
                 case Kind.Wu: Cleaner.Svc(true); break;
                 case Kind.Dns: Cleaner.FlushDns(); break;
+                case Kind.Tweak: try { it.Act(); } catch { } break;
             }
             it.Info = "feito";
         }
         list.Invalidate();
         status.Text = killed + " processos encerrados · ~" + Cleaner.Fmt(freed) + " de RAM liberados. Bom jogo!";
         status.ForeColor = C.Text; go.Enabled = list.Enabled = true;
+    }
+}
+
+// Ajustes de desempenho do Game Booster
+static class Tweaks {
+    [DllImport("ntdll.dll")] static extern int NtSetSystemInformation(int cls, ref int info, int len);
+    [DllImport("advapi32.dll", SetLastError = true)] static extern bool OpenProcessToken(IntPtr h, uint acc, out IntPtr tok);
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern bool LookupPrivilegeValue(string sys, string name, out long luid);
+    [StructLayout(LayoutKind.Sequential, Pack = 4)] struct TP { public int Count; public long Luid; public int Attr; }
+    [DllImport("advapi32.dll", SetLastError = true)] static extern bool AdjustTokenPrivileges(IntPtr tok, bool dis, ref TP n, int len, IntPtr prev, IntPtr rl);
+    [DllImport("user32.dll")] static extern bool SystemParametersInfo(int act, int p, int[] v, int win);
+    [DllImport("user32.dll")] static extern bool SystemParametersInfo(int act, int p, IntPtr v, int win);
+    static void Priv(string name) {
+        IntPtr t; if (!OpenProcessToken(Process.GetCurrentProcess().Handle, 0x28, out t)) return;
+        long l; if (!LookupPrivilegeValue(null, name, out l)) return;
+        var tp = new TP { Count = 1, Luid = l, Attr = 2 }; AdjustTokenPrivileges(t, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
+    }
+    public static void PurgeStandby() { Priv("SeProfileSingleProcessPrivilege"); int cmd = 4; NtSetSystemInformation(80, ref cmd, 4); } // MemoryPurgeStandbyList
+    public static void GameMode() {
+        Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\GameBar", "AutoGameModeEnabled", 1, RegistryValueKind.DWord);
+        Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\GameBar", "AllowAutoGameMode", 1, RegistryValueKind.DWord);
+    }
+    public static void NoDvr() {
+        Registry.SetValue(@"HKEY_CURRENT_USER\System\GameConfigStore", "GameDVR_Enabled", 0, RegistryValueKind.DWord);
+        Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0, RegistryValueKind.DWord);
+    }
+    public static void Mmcss() {
+        string k = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile";
+        Registry.SetValue(k, "SystemResponsiveness", 10, RegistryValueKind.DWord);
+        Registry.SetValue(k + @"\Tasks\Games", "GPU Priority", 8, RegistryValueKind.DWord);
+        Registry.SetValue(k + @"\Tasks\Games", "Priority", 6, RegistryValueKind.DWord);
+        Registry.SetValue(k + @"\Tasks\Games", "Scheduling Category", "High", RegistryValueKind.String);
+    }
+    public static void NoMouseAccel() {
+        Registry.SetValue(@"HKEY_CURRENT_USER\Control Panel\Mouse", "MouseSpeed", "0");
+        Registry.SetValue(@"HKEY_CURRENT_USER\Control Panel\Mouse", "MouseThreshold1", "0");
+        Registry.SetValue(@"HKEY_CURRENT_USER\Control Panel\Mouse", "MouseThreshold2", "0");
+        SystemParametersInfo(0x0004, 0, new[] { 0, 0, 0 }, 3); // SPI_SETMOUSE: aplica na hora
+    }
+    public static void LessFx() {
+        SystemParametersInfo(0x1043, 0, IntPtr.Zero, 3); // SPI_SETMENUANIMATION off
+        SystemParametersInfo(0x1003, 0, IntPtr.Zero, 3); // SPI_SETCOMBOBOXANIMATION off
+        SystemParametersInfo(0x1005, 0, IntPtr.Zero, 3); // SPI_SETLISTBOXSMOOTHSCROLLING off
+        SystemParametersInfo(0x0049, 0, IntPtr.Zero, 3); // SPI_SETANIMATION (min/max) — via estrutura padrão desligada
+        Registry.SetValue(@"HKEY_CURRENT_USER\Control Panel\Desktop\WindowMetrics", "MinAnimate", "0");
+        Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "TaskbarAnimations", 0, RegistryValueKind.DWord);
+    }
+    public static void StopSvc(string n) {
+        try { using (var s = new ServiceController(n)) if (s.Status == ServiceControllerStatus.Running) { s.Stop(); s.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15)); } } catch { }
+    }
+}
+
+// Relatório de RAM/CPU: retrato do Gerenciador de Tarefas no momento do clique
+class RamReport : UserControl {
+    [StructLayout(LayoutKind.Sequential)] class MEMSTAT { public int Len = 64; public int Load; public ulong Total, Avail, PTot, PAvail, VTot, VAvail, VExt; }
+    [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx([In, Out] MEMSTAT m);
+    static readonly Color ACC = Color.FromArgb(255, 170, 40);
+    ListView lv = new ListView(); Label head = new Label(), sub = new Label(); ImageList img = new ImageList { ImageSize = new Size(20, 20), ColorDepth = ColorDepth.Depth32Bit };
+    LBtn upd = new LBtn("⟳  Atualizar", false) { Accent = ACC }, cpy = new LBtn("Copiar relatório", true) { Accent = ACC };
+    List<string[]> data = new List<string[]>(); bool busy;
+    public RamReport() {
+        BackColor = C.Bg; DoubleBuffered = true; Padding = new Padding(20, 8, 20, 12);
+        head.Font = PCInfo.F(19f, true); head.ForeColor = Color.White; head.Dock = DockStyle.Top; head.Height = 40; head.Text = "Relatório de RAM";
+        sub.Font = PCInfo.F(10f, false); sub.ForeColor = C.Mute; sub.Dock = DockStyle.Top; sub.Height = 30;
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 54, BackColor = C.Bg, Padding = new Padding(0, 4, 0, 6) };
+        upd.Width = 150; cpy.Width = 170; upd.Margin = new Padding(0, 0, 10, 0); bar.Controls.Add(upd); bar.Controls.Add(cpy);
+        upd.Click += (s, e) => Snapshot(); cpy.Click += (s, e) => Copy();
+        lv.Dock = DockStyle.Fill; lv.View = View.Details; lv.FullRowSelect = true; lv.BorderStyle = BorderStyle.None; lv.OwnerDraw = true;
+        lv.BackColor = C.Card; lv.ForeColor = C.Text; lv.Font = PCInfo.F(10f, false);
+        foreach (var c in new[] { "Processo", "Instâncias", "RAM", "% da RAM", "CPU" }) lv.Columns.Add(c, 100, c == "Processo" ? HorizontalAlignment.Left : HorizontalAlignment.Right);
+        lv.DrawColumnHeader += (s, e) => {
+            using (var b = new SolidBrush(Color.FromArgb(24, 24, 28))) e.Graphics.FillRectangle(b, e.Bounds);
+            var f = TextFormatFlags.VerticalCenter | (e.ColumnIndex == 0 ? TextFormatFlags.Left : TextFormatFlags.Right);
+            using (var ft = PCInfo.F(9f, true)) TextRenderer.DrawText(e.Graphics, e.Header.Text.ToUpper(), ft, new Rectangle(e.Bounds.X + 10, e.Bounds.Y, e.Bounds.Width - 20, e.Bounds.Height), C.Mute, f);
+        };
+        lv.DrawItem += (s, e) => { };
+        lv.DrawSubItem += (s, e) => {
+            var g = e.Graphics; var bg = e.Item.Selected ? Color.FromArgb(70, ACC) : e.ItemIndex % 2 == 0 ? C.Card : Color.FromArgb(24, 24, 28);
+            using (var b = new SolidBrush(bg)) g.FillRectangle(b, e.Bounds);
+            var r = e.Bounds;
+            if (e.ColumnIndex == 0) {
+                int ix = e.Item.Tag is int ? (int)e.Item.Tag : -1; if (ix >= 0 && ix < img.Images.Count) g.DrawImage(img.Images[ix], r.X + 8, r.Y + (r.Height - 20) / 2, 20, 20);
+                TextRenderer.DrawText(g, e.SubItem.Text, lv.Font, new Rectangle(r.X + 36, r.Y, r.Width - 40, r.Height), C.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            } else {
+                if (e.ColumnIndex == 3) { double pc; if (double.TryParse(e.SubItem.Text.TrimEnd('%', ' '), out pc)) using (var b = new SolidBrush(Color.FromArgb(90, ACC))) g.FillRectangle(b, r.X + 6, r.Bottom - 6, (int)((r.Width - 12) * Math.Min(1, pc / 25)), 3); }
+                TextRenderer.DrawText(g, e.SubItem.Text, lv.Font, new Rectangle(r.X, r.Y, r.Width - 12, r.Height), e.ColumnIndex == 2 ? Color.White : C.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+            }
+        };
+        lv.SmallImageList = new ImageList { ImageSize = new Size(1, 30) }; // altura da linha
+        lv.Resize += (s, e) => { int w = lv.ClientSize.Width; lv.Columns[0].Width = Math.Max(200, w - 4 * 120 - 4); for (int i = 1; i < 5; i++) lv.Columns[i].Width = 120; };
+        var card = new Panel { Dock = DockStyle.Fill, BackColor = C.Card, Padding = new Padding(1) }; card.Controls.Add(lv);
+        Controls.Add(card); Controls.Add(bar); Controls.Add(sub); Controls.Add(head);
+    }
+    static string Fmt(long b) { return Cleaner.Fmt(b); }
+    public void Snapshot() {
+        if (busy) return; busy = true; sub.Text = "Medindo processos (CPU em ~1 s)…"; upd.Enabled = false;
+        new Thread(() => {
+            var t0 = new Dictionary<int, TimeSpan>(); var procs = Process.GetProcesses();
+            foreach (var p in procs) try { t0[p.Id] = p.TotalProcessorTime; } catch { }
+            var sw = Stopwatch.StartNew(); Thread.Sleep(1000); double el = sw.Elapsed.TotalMilliseconds * Environment.ProcessorCount;
+            var mem = new MEMSTAT(); GlobalMemoryStatusEx(mem);
+            var groups = new Dictionary<string, object[]>(); // nome -> [instâncias, ram, cpuMs, caminho]
+            foreach (var p in procs) {
+                try {
+                    long ws = p.WorkingSet64; double cpu = 0; TimeSpan a;
+                    if (t0.TryGetValue(p.Id, out a)) try { cpu = (p.TotalProcessorTime - a).TotalMilliseconds; } catch { }
+                    string n = p.ProcessName; object[] gr;
+                    if (!groups.TryGetValue(n, out gr)) { string path = null; try { path = p.MainModule.FileName; } catch { } gr = new object[] { 0, 0L, 0.0, path }; groups[n] = gr; }
+                    gr[0] = (int)gr[0] + 1; gr[1] = (long)gr[1] + ws; gr[2] = (double)gr[2] + cpu;
+                } catch { }
+            }
+            var rows = groups.OrderByDescending(kv => (long)kv.Value[1]).ToList();
+            var icons = new List<Bitmap>(); var items = new List<ListViewItem>(); data = new List<string[]>();
+            foreach (var kv in rows) {
+                long ram = (long)kv.Value[1]; double pc = mem.Total > 0 ? ram * 100.0 / mem.Total : 0, cp = (double)kv.Value[2] * 100 / el;
+                string[] v = { kv.Key, kv.Value[0].ToString(), Fmt(ram), pc.ToString("0.0") + "%", cp.ToString("0.0") + "%" };
+                data.Add(v);
+                int ii = -1; var path = kv.Value[3] as string;
+                if (path != null) try { using (var ic = Icon.ExtractAssociatedIcon(path)) { icons.Add(new Bitmap(ic.ToBitmap(), 20, 20)); ii = icons.Count - 1; } } catch { }
+                items.Add(new ListViewItem(v) { Tag = ii });
+            }
+            string s2 = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") + "  ·  RAM em uso: " + Fmt((long)(mem.Total - mem.Avail)) + " de " + Fmt((long)mem.Total) + " (" + mem.Load + "%)  ·  livre: " + Fmt((long)mem.Avail) + "  ·  " + procs.Length + " processos";
+            BeginInvoke((Action)(() => {
+                lv.BeginUpdate(); lv.Items.Clear(); img.Images.Clear(); foreach (var b in icons) img.Images.Add(b);
+                lv.Items.AddRange(items.ToArray()); lv.EndUpdate(); sub.Text = s2; sub.ForeColor = ACC; upd.Enabled = true; busy = false;
+            }));
+        }) { IsBackground = true }.Start();
+    }
+    void Copy() {
+        var sb = new System.Text.StringBuilder(); sb.AppendLine("RELATÓRIO DE RAM - " + sub.Text); sb.AppendLine();
+        sb.AppendLine(string.Format("{0,-40}{1,6}{2,12}{3,9}{4,9}", "Processo", "Inst.", "RAM", "%RAM", "CPU"));
+        foreach (var d in data) sb.AppendLine(string.Format("{0,-40}{1,6}{2,12}{3,9}{4,9}", d[0].Length > 39 ? d[0].Substring(0, 39) : d[0], d[1], d[2], d[3], d[4]));
+        try { Clipboard.SetText(sb.ToString()); } catch { }
     }
 }

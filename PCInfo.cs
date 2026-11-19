@@ -16,8 +16,8 @@ using System.Net.NetworkInformation;
 [assembly: AssemblyCompany("Budart")]
 [assembly: AssemblyProduct("PC Info")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Budart")]
-[assembly: AssemblyVersion("2.1.0.0")]
-[assembly: AssemblyFileVersion("2.1.0.0")]
+[assembly: AssemblyVersion("2.2.0.0")]
+[assembly: AssemblyFileVersion("2.2.0.0")]
 
 class PCInfo : Form
 {
@@ -58,14 +58,19 @@ class PCInfo : Form
     }
     // Navegação: menu lateral troca o conteúdo (PC Info | Clean/Boost) sem abrir janelas
     Panel infoPane, side; LimpaScreen limpa; SideBtn navInfo, navClean, sideToggle; List<SideBtn> infoActs = new List<SideBtn>(); bool sideOpen = true;
-    void ShowPage(bool clean)
+    RamReport ram; SideBtn bRam, sepClean;
+    void ShowPage(bool clean) { ShowPage(clean ? 1 : 0); }
+    void ShowPage(int pg) // 0 = informações, 1 = Clean/Boost, 2 = relatório de RAM
     {
         SuspendLayout();
-        limpa.Visible = clean; infoPane.Visible = !clean;
-        if (clean) limpa.BringToFront(); else infoPane.BringToFront();
-        navInfo.Active = !clean; navClean.Active = clean; navInfo.Invalidate(); navClean.Invalidate();
-        foreach (var b in infoActs) b.Visible = !clean;
+        infoPane.Visible = pg == 0; limpa.Visible = pg == 1; ram.Visible = pg == 2;
+        (pg == 0 ? (Control)infoPane : pg == 1 ? (Control)limpa : ram).BringToFront();
+        navInfo.Active = pg == 0; navClean.Active = pg >= 1; bRam.Active = pg == 2;
+        foreach (var b in infoActs) b.Visible = pg == 0;
+        sepClean.Visible = bRam.Visible = pg >= 1;
+        foreach (Control c in side.Controls) c.Invalidate();
         ResumeLayout(true);
+        if (pg == 2) ram.Snapshot();
     }
     void ToggleSide()
     {
@@ -99,7 +104,9 @@ class PCInfo : Form
         var bAll = new SideBtn("\uE8B3", "Copiar tudo", null); bAll.Click += (s, e) => Clipboard.SetText(Report());
         var bSave = new SideBtn("\uE74E", "Salvar TXT", ACC); bSave.Click += (s, e) => SaveTxt();
         infoActs.AddRange(new[] { sep, bMode, bUpd, bSel, bAll, bSave });
-        var order = new List<SideBtn> { sideToggle, navInfo, navClean, navNet, sep, bMode, bUpd, bSel, bAll, bSave };
+        sepClean = new SideBtn("", "AÇÕES", null) { Caption = true, Visible = false };
+        bRam = new SideBtn("\uE950", "Relatório de RAM", Color.FromArgb(255, 170, 40)) { Visible = false }; bRam.Click += (s, e) => ShowPage(2);
+        var order = new List<SideBtn> { sideToggle, navInfo, navClean, navNet, sep, bMode, bUpd, bSel, bAll, bSave, sepClean, bRam };
         for (int k = order.Count - 1; k >= 0; k--) { order[k].Dock = DockStyle.Top; side.Controls.Add(order[k]); }
 
         // cards de destaque
@@ -146,7 +153,8 @@ class PCInfo : Form
         infoPane = new Panel { Dock = DockStyle.Fill, BackColor = BG };
         infoPane.Controls.Add(loader); infoPane.Controls.Add(lvWrap); infoPane.Controls.Add(grid);
         limpa = new LimpaScreen { Dock = DockStyle.Fill, Visible = false };
-        Controls.Add(limpa); Controls.Add(infoPane); Controls.Add(side); Controls.Add(status);
+        ram = new RamReport { Dock = DockStyle.Fill, Visible = false };
+        Controls.Add(ram); Controls.Add(limpa); Controls.Add(infoPane); Controls.Add(side); Controls.Add(status);
         Shown += (s, e) => Load2();
     }
 
